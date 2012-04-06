@@ -40,7 +40,13 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Metadata\DynamicEntity.cs" />
+    <Compile Include="Metadata\EntityDataType.cs" />
+    <Compile Include="Metadata\IDynamicEntity.cs" />
+    <Compile Include="Metadata\IDynamicField.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="Storage\IDynamicEntityStorage.cs" />
+    <Compile Include="Storage\MongoDbDynamicEntityStorage.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
