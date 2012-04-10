@@ -4,9 +4,13 @@ using System.Linq;
 using System.Text;
 
 using Koneko.DynamicEntity.Metadata;
+using Koneko.DynamicEntity.Storage;
 
-namespace Koneko.DynamicEntity.Storage {
-	public class MongoDbDynamicEntityMetadataStorage : IDynamicEntityMetadataStorage {
+using MongoDB.Bson;
+using MongoDB.Driver;
+
+namespace Koneko.DynamicEntity.MongoDB {
+	public class DynamicEntityMetadataStorage : IDynamicEntityMetadataStorage {
 		public IDynamicEntity Load(string sourcename) {
 			throw new NotImplementedException();
 		}
