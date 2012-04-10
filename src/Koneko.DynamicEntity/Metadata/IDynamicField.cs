@@ -14,6 +14,7 @@ namespace Koneko.DynamicEntity.Metadata {
 
 		bool IsRequired { get; set; }
 
-		IDictionary<EntityDataTypeProperty, object> Properties { get; set; }
+		IDictionary<string, object> Properties { get; set; }
+		T GetTypedPropertyValue<T>(string name);
 	}
 }

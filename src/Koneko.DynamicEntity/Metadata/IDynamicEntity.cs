@@ -5,6 +5,8 @@ using System.Text;
 
 namespace Koneko.DynamicEntity.Metadata {
 	public interface IDynamicEntity {
-		IDynamicField Fields { get; set; }
+		string Name { get; set; }
+		IDynamicField this[string name] { get; }
+		IDynamicField[] Fields { get; set; }
 	}
 }

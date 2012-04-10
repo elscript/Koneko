@@ -3,6 +3,8 @@ Microsoft Visual Studio Solution File, Format Version 11.00
 # Visual C# Express 2010
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Koneko.DynamicEntity", "Koneko.DynamicEntity\Koneko.DynamicEntity.csproj", "{0C975F23-7847-4F79-9288-23241CF0BA6F}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Koneko.Tests", "Koneko.Tests\Koneko.Tests.csproj", "{DDE6FAF2-631D-4C2E-95AB-62171F48A6A2}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -13,6 +15,10 @@ Global
 		{0C975F23-7847-4F79-9288-23241CF0BA6F}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{0C975F23-7847-4F79-9288-23241CF0BA6F}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{0C975F23-7847-4F79-9288-23241CF0BA6F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{DDE6FAF2-631D-4C2E-95AB-62171F48A6A2}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{DDE6FAF2-631D-4C2E-95AB-62171F48A6A2}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{DDE6FAF2-631D-4C2E-95AB-62171F48A6A2}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{DDE6FAF2-631D-4C2E-95AB-62171F48A6A2}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
