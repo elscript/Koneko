@@ -6,7 +6,7 @@ using System.Text;
 using Koneko.DynamicEntity.Metadata;
 
 namespace Koneko.DynamicEntity.Storage {
-	public class MongoDbDynamicEntityStorage : IDynamicEntityMetadataStorage {
+	public class MongoDbDynamicEntityMetadataStorage : IDynamicEntityMetadataStorage {
 		public IDynamicEntity Load(string sourcename) {
 			throw new NotImplementedException();
 		}
