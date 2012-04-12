@@ -3,12 +3,10 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 
-using NReco.Converting;
-
 namespace Koneko.DynamicEntity.Metadata {
 	public class SimpleDynamicField : IDynamicField {
 		public string Name { get; set; }
-		public EntityDataType DataType { get; set; }
+		public Type DataType { get; set; }
 
 		public object DefaultValue { get; set; }
 

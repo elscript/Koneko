@@ -43,6 +43,7 @@
     </Reference>
     <Reference Include="System" />
     <Reference Include="System.Core" />
+    <Reference Include="System.ServiceProcess" />
     <Reference Include="System.Xml.Linq" />
     <Reference Include="System.Data.DataSetExtensions" />
     <Reference Include="Microsoft.CSharp" />
@@ -50,10 +51,15 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="DynamicEntity\MongoDbStorageTest.cs" />
     <Compile Include="DynamicEntity\SimpleCreateEntityTest.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\Koneko.DynamicEntity.MongoDB\Koneko.DynamicEntity.MongoDB.csproj">
+      <Project>{130B8D97-5B7C-47AB-8F25-0D33BBA2B759}</Project>
+      <Name>Koneko.DynamicEntity.MongoDB</Name>
+    </ProjectReference>
     <ProjectReference Include="..\Koneko.DynamicEntity\Koneko.DynamicEntity.csproj">
       <Project>{0C975F23-7847-4F79-9288-23241CF0BA6F}</Project>
       <Name>Koneko.DynamicEntity</Name>

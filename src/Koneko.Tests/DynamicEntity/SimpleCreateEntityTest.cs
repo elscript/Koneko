@@ -11,8 +11,7 @@ using KonekoDynamicEntity = Koneko.DynamicEntity.Metadata.DynamicEntity;
 namespace Koneko.Tests.DynamicEntity {
 	[TestFixture]
 	[Category("Koneko.DynamicEntity")]
-
-	public class EntityMetadataTests {
+	public class EntityMetadataTest {
 		[Test]
 		public void TestEntityCreation() {
 			var entity = new KonekoDynamicEntity {
@@ -20,7 +19,7 @@ namespace Koneko.Tests.DynamicEntity {
 				Fields = new[] {
 					new SimpleDynamicField { 
 							Name = "name",
-							DataType = new EntityDataType { BaseType = typeof(string) }, 
+							DataType = typeof(string), 
 							IsRequired = true, 
 							DefaultValue = "n/a",
  							Properties = new Dictionary<string, object> {
@@ -30,7 +29,7 @@ namespace Koneko.Tests.DynamicEntity {
 
 					new SimpleDynamicField { 
 							Name = "amount",
-							DataType = new EntityDataType { BaseType = typeof(decimal) }, 
+							DataType = typeof(decimal), 
 							IsRequired = true, 
 							DefaultValue = 1000,
  							Properties = new Dictionary<string, object> {

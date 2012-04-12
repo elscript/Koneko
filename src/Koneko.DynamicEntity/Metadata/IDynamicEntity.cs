@@ -7,6 +7,6 @@ namespace Koneko.DynamicEntity.Metadata {
 	public interface IDynamicEntity {
 		string Name { get; set; }
 		IDynamicField this[string name] { get; }
-		IDynamicField[] Fields { get; set; }
+		IList<IDynamicField> Fields { get; set; }
 	}
 }

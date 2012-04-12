@@ -11,6 +11,6 @@ namespace Koneko.DynamicEntity.Metadata {
 				return Fields.SingleOrDefault(f => f.Name == name );
 			}
 		}
-		public IDynamicField[] Fields { get; set; }
+		public IList<IDynamicField> Fields { get; set; }
 	}
 }
