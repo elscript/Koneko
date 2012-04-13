@@ -58,8 +58,6 @@ namespace Koneko.DynamicEntity.MongoDB {
 
 		public IDynamicEntity Load(string entityName) {
 			MongoCollection<BsonDocument> descriptors = GetCollection();
-			//var qDescriptors = descriptors.AsQueryable<BsonDocument>();
-			//var result = qDescriptors.FirstOrDefault(x => Convert.ToString(x["name"]) == sourcename);
 			var result = descriptors.FindOne(MongoQueryBuilder.EQ("name", entityName));
 			return result != null ? DynamicEntityToBsonAdapter.FromBsonDocument(result) : null;
 		}
@@ -67,8 +65,6 @@ namespace Koneko.DynamicEntity.MongoDB {
 		public StorageOperationResult Update(IDynamicEntity newEntity) {
 			// TODO: move diff logic to some diff handler when it will be needed to capture history or sth
 			MongoCollection<BsonDocument> descriptors = GetCollection();
-			//var qDescriptors = descriptors.AsQueryable<BsonDocument>();
-			//var oldEntityDoc = qDescriptors.FirstOrDefault(x => Convert.ToString(x["name"]) == newEntity.Name);
 			var oldEntityDoc = descriptors.FindOne(MongoQueryBuilder.EQ("name", newEntity.Name));
 			if (oldEntityDoc == null) {
 				return new StorageOperationResult { 
