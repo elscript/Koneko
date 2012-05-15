@@ -2,7 +2,6 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
-using System.ServiceModel;
 
 namespace Koneko.P2P.Chord {
 	public class Network {
