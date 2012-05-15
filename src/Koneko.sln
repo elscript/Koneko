@@ -7,6 +7,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Koneko.Tests", "Koneko.Test
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Koneko.DynamicEntity.MongoDB", "Koneko.DynamicEntity.MongoDB\Koneko.DynamicEntity.MongoDB.csproj", "{130B8D97-5B7C-47AB-8F25-0D33BBA2B759}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Koneko.P2P.Chord", "Koneko.P2P.Chord\Koneko.P2P.Chord.csproj", "{4D7C01B4-440B-4896-A192-C7F0E7F363D4}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -25,6 +27,10 @@ Global
 		{130B8D97-5B7C-47AB-8F25-0D33BBA2B759}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{130B8D97-5B7C-47AB-8F25-0D33BBA2B759}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{130B8D97-5B7C-47AB-8F25-0D33BBA2B759}.Release|Any CPU.Build.0 = Release|Any CPU
+		{4D7C01B4-440B-4896-A192-C7F0E7F363D4}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4D7C01B4-440B-4896-A192-C7F0E7F363D4}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4D7C01B4-440B-4896-A192-C7F0E7F363D4}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4D7C01B4-440B-4896-A192-C7F0E7F363D4}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
