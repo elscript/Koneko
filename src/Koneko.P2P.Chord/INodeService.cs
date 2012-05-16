@@ -2,14 +2,21 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+
 using System.ServiceModel;
 
 namespace Koneko.P2P.Chord {
 	[ServiceContract]
 	public interface INodeService {
 		[OperationContract]
-		Node FindSuccessorById(long nodeId, long initialNodeId);
+		NodeDescriptor FindSuccessorById(ulong id);
 		[OperationContract]
-		Node GetNodeSuccessor(
+		NodeDescriptor GetNodePredecessor();
+		[OperationContract]
+		NodeDescriptor GetNodeSuccessor();
+		[OperationContract]
+		NodeDescriptor FindClosestPrecedingFingerById(ulong id);
+		[OperationContract]
+		void CheckPredecessor(NodeDescriptor candidateNode);
 	}
 }

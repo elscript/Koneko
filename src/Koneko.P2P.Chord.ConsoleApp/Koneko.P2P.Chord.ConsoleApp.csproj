@@ -5,11 +5,11 @@
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
     <ProductVersion>8.0.30703</ProductVersion>
     <SchemaVersion>2.0</SchemaVersion>
-    <ProjectGuid>{4D7C01B4-440B-4896-A192-C7F0E7F363D4}</ProjectGuid>
-    <OutputType>Library</OutputType>
+    <ProjectGuid>{8AA9548E-B9E0-4835-A859-6B3B73E9210C}</ProjectGuid>
+    <OutputType>Exe</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
-    <RootNamespace>Koneko.P2P.Chord</RootNamespace>
-    <AssemblyName>Koneko.P2P.Chord</AssemblyName>
+    <RootNamespace>Koneko.P2P.Chord.ConsoleApp</RootNamespace>
+    <AssemblyName>Koneko.P2P.Chord.ConsoleApp</AssemblyName>
     <TargetFrameworkVersion>v4.0</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
   </PropertyGroup>
@@ -30,10 +30,12 @@
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
+  <PropertyGroup>
+    <StartupObject />
+  </PropertyGroup>
   <ItemGroup>
     <Reference Include="System" />
     <Reference Include="System.Core" />
-    <Reference Include="System.Runtime.Serialization" />
     <Reference Include="System.ServiceModel" />
     <Reference Include="System.Xml.Linq" />
     <Reference Include="System.Data.DataSetExtensions" />
@@ -42,13 +44,14 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="INodeService.cs" />
-    <Compile Include="LocalNodeDescriptor.cs" />
-    <Compile Include="NodeDescriptor.cs" />
-    <Compile Include="LocalInstance.cs" />
-    <Compile Include="NodeService.cs" />
-    <Compile Include="NodeServicesCache.cs" />
+    <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Koneko.P2P.Chord\Koneko.P2P.Chord.csproj">
+      <Project>{4D7C01B4-440B-4896-A192-C7F0E7F363D4}</Project>
+      <Name>Koneko.P2P.Chord</Name>
+    </ProjectReference>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
