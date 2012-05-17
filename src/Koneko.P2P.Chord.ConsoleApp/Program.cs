@@ -106,17 +106,12 @@ namespace Koneko.P2P.Chord.ConsoleApp {
 							"test", "foo", "baz", "bar"
 						});
 					}
-				} else if (cmd == "leave") {
-					foreach (var inst in localInstances) {
-						inst.Leave();
-					}
 				} else if (cmd == "exit") {
 					break;
 				} else {
 					Console.WriteLine(
 							@"	join <ipaddress>:<port> : Joins the network with known node \r\n
 								join : Create new network \r\n	
-								leave : Leave the network \r\n
 								exit : Exit the application \r\n
 							"
 					);

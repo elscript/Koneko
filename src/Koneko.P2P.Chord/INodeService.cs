@@ -9,14 +9,12 @@ namespace Koneko.P2P.Chord {
 	[ServiceContract]
 	public interface INodeService {
 		[OperationContract]
-		NodeDescriptor FindSuccessorById(ulong id);
+		NodeDescriptor FindSuccessorForId(ulong id);
 		[OperationContract]
 		NodeDescriptor GetNodePredecessor();
 		[OperationContract]
 		NodeDescriptor GetNodeSuccessor();
 		[OperationContract]
-		NodeDescriptor FindClosestPrecedingFingerById(ulong id);
-		[OperationContract]
-		void CheckPredecessor(NodeDescriptor candidateNode);
+		void FixPredecessor(NodeDescriptor candidateNode);
 	}
 }

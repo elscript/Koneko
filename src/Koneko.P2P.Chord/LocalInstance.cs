@@ -45,13 +45,17 @@ namespace Koneko.P2P.Chord {
 				// TODO: message: already joined
 			}
 
-			var knownNodeSrv = NodeServices.GetRemoteNodeService(knownNode);
 			if (knownNode != null) {
+				if (knownNode.Equals(LocalNode.Endpoint)) {
+					 // TODO: message: the known node cannot be the same as the local node
+				}
+				var knownNodeSrv = NodeServices.GetRemoteNodeService(knownNode);
 				LocalNode.Fingers[0] = new KeyValuePair<ulong, NodeDescriptor>(
 							GetFingerTableKey(LocalNode.Id, 0), 
-							knownNodeSrv.FindSuccessorById(LocalNode.Id)
+							knownNodeSrv.FindSuccessorForId(LocalNode.Id)
 						);	
 			} else {
+				// start new ring
 				for (int i = 0; i <= RingLength - 1; ++i) {
 					LocalNode.Fingers[i] = new KeyValuePair<ulong, NodeDescriptor>(GetFingerTableKey(LocalNode.Id, i), LocalNode.Endpoint);
 				}
@@ -70,7 +74,7 @@ namespace Koneko.P2P.Chord {
 					() => {
 						while (!stabilizeTaskCts.IsCancellationRequested) {
 							Stabilize();
-							Thread.Sleep(5000);
+							Thread.Sleep(1000);
 						}
 					},
 					stabilizeTaskCts.Token
@@ -80,9 +84,11 @@ namespace Koneko.P2P.Chord {
 			var fixFingersTaskCts = new CancellationTokenSource();
 			var fixFingersTask = Task.Factory.StartNew(
 					() => {
+						var fingerRowIdxToFix = 0;
 						while (!fixFingersTaskCts.IsCancellationRequested) {
-							FixFingers();
-							Thread.Sleep(2000);
+							FixFingers(fingerRowIdxToFix);
+							++fingerRowIdxToFix;
+							Thread.Sleep(1000);
 						}
 					},
 					fixFingersTaskCts.Token
@@ -105,63 +111,73 @@ namespace Koneko.P2P.Chord {
 			}
 		}
 
-		public void Exit() {
-			Leave();
-			NodeServices.Clear();
-		}
-
 		public string GetRemoteServiceUrlPart() {
 			return "/NodeService/" + LocalNode.Endpoint.RingLevel;
 		}
 
-		public NodeDescriptor FindResponsibleNodeByValue(IHashFunctionArgument val) {
+		public NodeDescriptor FindResponsibleNodeForValue(IHashFunctionArgument val) {
 			var objKey = ObjectHashKeyPrv.Provide(val.ToHashFunctionArgument());
-			return FindSuccessorById(objKey);
+			return FindSuccessorForId(objKey);
 		}
 
-		public NodeDescriptor FindSuccessorById(ulong id) {
-			var predecessorNode = FindPredecessorById(id);
-			var predecessorNodeSrv = NodeServices.GetRemoteNodeService(predecessorNode);
-			return predecessorNodeSrv.GetNodeSuccessor();
+		private void Stabilize() {
+			// if there are no other nodes in the network - no need to stabilize anything
+			if (!LocalNode.Successor.Equals(LocalNode.Endpoint)) {
+				var successorNodeSrv = NodeServices.GetRemoteNodeService(LocalNode.Successor);
+				var succPredecessor = successorNodeSrv.GetNodePredecessor();
+				if (TopologyHelper.IsInCircularInterval(succPredecessor.Id, LocalNode.Id, LocalNode.Successor.Id)) {
+					LocalNode.Fingers[0] = new KeyValuePair<ulong, NodeDescriptor>(LocalNode.Fingers[0].Key, succPredecessor);
+				}
+				successorNodeSrv.FixPredecessor(LocalNode.Endpoint);
+			}	
 		}
 
-		public void Stabilize() {
-			var successorNodeSrv = NodeServices.GetRemoteNodeService(LocalNode.Successor);
-			var succPredecessor = successorNodeSrv.GetNodePredecessor();
-			if (TopologyHelper.IsInCircularInterval(succPredecessor.Id, LocalNode.Id, LocalNode.Successor.Id)) {
-				LocalNode.Fingers[0] = new KeyValuePair<ulong, NodeDescriptor>(LocalNode.Fingers[0].Key, succPredecessor);
-			}
-			successorNodeSrv.CheckPredecessor(LocalNode.Endpoint);
-		}
-
-		public void CheckPredecessor(NodeDescriptor candidateNode) {
+		public void FixPredecessor(NodeDescriptor candidateNode) {
 			if (LocalNode.Predecessor == null || TopologyHelper.IsInCircularInterval(candidateNode.Id, LocalNode.Predecessor.Id, LocalNode.Id)) {
 				LocalNode.Predecessor = candidateNode;
 			}
 		}
 
-		public void FixFingers() {
-			var actualFingerRowIdx = GetRandomFingerTableIndex();
+		private void FixFingers(int? fingerRowIdx = null) {
+			var actualFingerRowIdx = fingerRowIdx.HasValue 
+										? (fingerRowIdx.Value > RingLength - 1 
+												? 0
+												: fingerRowIdx.Value 
+											)
+										: GetRandomFingerTableIndex();
 			LocalNode.Fingers[actualFingerRowIdx] = new KeyValuePair<ulong, NodeDescriptor>(
 											GetFingerTableKey(LocalNode.Id, actualFingerRowIdx),
-											FindSuccessorById(LocalNode.Fingers[actualFingerRowIdx].Key)
+											FindSuccessorForId(LocalNode.Fingers[actualFingerRowIdx].Key)
 										);
 		}
 
-		private NodeDescriptor FindPredecessorById(ulong id) {
-			if (!TopologyHelper.IsInCircularInterval(id, LocalNode.Id, LocalNode.Successor.Id, includeRight: true)) {
-				var closestPrecedingFinger = FindClosestPrecedingFingerById(id);
-				var closestPrecedingFingerSrv = NodeServices.GetRemoteNodeService(closestPrecedingFinger);
-				return closestPrecedingFingerSrv.FindClosestPrecedingFingerById(id);
+		public NodeDescriptor FindSuccessorForId(ulong id) {
+			// check if my successor is actually the successor of this id
+			if (TopologyHelper.IsInCircularInterval(id, LocalNode.Id, LocalNode.Successor.Id, includeRight: true)) {
+				return LocalNode.Successor;
 			}
-			return LocalNode.Endpoint;
+
+			// check if me is actually the successor of this id
+			if (LocalNode.Predecessor != null && TopologyHelper.IsInCircularInterval(id, LocalNode.Predecessor.Id, LocalNode.Id, includeRight: true)) {
+				return LocalNode.Endpoint;
+			}
+
+			var closestPredecessorFromFingers = FindClosestPredecessorFromFingers(id);
+			if (closestPredecessorFromFingers.Equals(LocalNode.Endpoint)) {
+				return LocalNode.Endpoint;
+			}
+
+			var closestPredecessorFromFingersNodeSrv = NodeServices.GetRemoteNodeService(closestPredecessorFromFingers);
+			return closestPredecessorFromFingersNodeSrv.FindSuccessorForId(id);
 		}
 
-		public NodeDescriptor FindClosestPrecedingFingerById(ulong id) {
-			for (int i = (int)RingLength - 1; i >= 0; --i) {
-				if (TopologyHelper.IsInCircularInterval(LocalNode.Fingers[i].Value.Id, LocalNode.Id, id)) {
+		private NodeDescriptor FindClosestPredecessorFromFingers(ulong id) {
+			var rightVal = LocalNode.Id;
+			for (int i = RingLength - 1; i >= 0; --i) {
+				if (TopologyHelper.IsInCircularInterval(id, LocalNode.Fingers[i].Key, rightVal)) {
 					return LocalNode.Fingers[i].Value;
 				}
+				rightVal = LocalNode.Fingers[i].Key;
 			}
 			return LocalNode.Endpoint;
 		}

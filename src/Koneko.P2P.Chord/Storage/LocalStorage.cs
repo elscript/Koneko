@@ -36,8 +36,8 @@ namespace Koneko.P2P.Chord.Storage {
 		}
 
 		public void Put(IHashFunctionArgument val) {
-			var responsibleNode = LocalInstance.FindResponsibleNodeByValue(val);
-			if (responsibleNode.Equals(LocalInstance.LocalNode)) {
+			var responsibleNode = LocalInstance.FindResponsibleNodeForValue(val);
+			if (responsibleNode.Equals(LocalInstance.LocalNode.Endpoint)) {
 				PutToLocalStorage(val);
 			} else {
 				var responsibleNodeSrv = NodeServices.GetRemoteNodeService(responsibleNode);
@@ -46,8 +46,8 @@ namespace Koneko.P2P.Chord.Storage {
 		}
 
 		public object Get(IStorageQuery q) {
-			var responsibleNode = LocalInstance.FindResponsibleNodeByValue(q.GetArgument());
-			if (responsibleNode.Equals(LocalInstance.LocalNode)) {
+			var responsibleNode = LocalInstance.FindResponsibleNodeForValue(q.GetArgument());
+			if (responsibleNode.Equals(LocalInstance.LocalNode.Endpoint)) {
 				return GetFromLocalStorage(q);
 			} else {
 				var responsibleNodeSrv = NodeServices.GetRemoteNodeService(responsibleNode);
