@@ -34,6 +34,9 @@
     <StartupObject />
   </PropertyGroup>
   <ItemGroup>
+    <Reference Include="NReco">
+      <HintPath>..\..\bin\NReco.dll</HintPath>
+    </Reference>
     <Reference Include="System" />
     <Reference Include="System.Core" />
     <Reference Include="System.ServiceModel" />
@@ -48,6 +51,10 @@
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\Koneko.Common\Koneko.Common.csproj">
+      <Project>{3CFACE54-49E8-439B-BE81-45BFB7FCA54D}</Project>
+      <Name>Koneko.Common</Name>
+    </ProjectReference>
     <ProjectReference Include="..\Koneko.P2P.Chord\Koneko.P2P.Chord.csproj">
       <Project>{4D7C01B4-440B-4896-A192-C7F0E7F363D4}</Project>
       <Name>Koneko.P2P.Chord</Name>

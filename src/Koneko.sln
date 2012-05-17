@@ -11,6 +11,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Koneko.P2P.Chord", "Koneko.
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Koneko.P2P.Chord.ConsoleApp", "Koneko.P2P.Chord.ConsoleApp\Koneko.P2P.Chord.ConsoleApp.csproj", "{8AA9548E-B9E0-4835-A859-6B3B73E9210C}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Koneko.Common", "Koneko.Common\Koneko.Common.csproj", "{3CFACE54-49E8-439B-BE81-45BFB7FCA54D}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -37,6 +39,10 @@ Global
 		{8AA9548E-B9E0-4835-A859-6B3B73E9210C}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{8AA9548E-B9E0-4835-A859-6B3B73E9210C}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{8AA9548E-B9E0-4835-A859-6B3B73E9210C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3CFACE54-49E8-439B-BE81-45BFB7FCA54D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3CFACE54-49E8-439B-BE81-45BFB7FCA54D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3CFACE54-49E8-439B-BE81-45BFB7FCA54D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3CFACE54-49E8-439B-BE81-45BFB7FCA54D}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

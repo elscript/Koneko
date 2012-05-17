@@ -6,15 +6,21 @@ using System.Security.Cryptography;
 using System.Runtime.Serialization;
 using System.ServiceModel;
 
+using NReco;
+
+using Koneko.Common.Hashing;
+
 namespace Koneko.P2P.Chord {
 	[DataContract]
-	public class NodeDescriptor : IEquatable<NodeDescriptor> {
+	public class NodeDescriptor : IEquatable<NodeDescriptor>, IHashFunctionArgument {
 		[DataMember]
 		private ulong _Id;
 		[DataMember]
 		private int _Port;
 		[DataMember]
 		private string _IpAddress;
+		[DataMember]
+		private int _RingLevel;
 
 		public ulong Id {
 			get { return _Id; }
@@ -31,10 +37,16 @@ namespace Koneko.P2P.Chord {
 			set { _Port = value; }
 		}
 
-		public NodeDescriptor(string ipAddress, int port) {
+		public int RingLevel {
+			get { return _RingLevel; }
+			set { _RingLevel = value; }
+		}
+
+		public NodeDescriptor(string ipAddress, int port, int ringLevel, IProvider<byte[], ulong> hashKeyPrv) {
 			_IpAddress = ipAddress;
 			_Port = port;
-			_Id = GetNodeId();
+			_RingLevel = ringLevel;
+			_Id = hashKeyPrv.Provide(this.ToHashFunctionArgument());
 		}
 
 		public override bool Equals(object obj) {
@@ -42,17 +54,15 @@ namespace Koneko.P2P.Chord {
 		}
 
 		public override int GetHashCode() {
-			return Id.GetHashCode() ^ IpAddress.GetHashCode() ^ Port.GetHashCode();
+			return Id.GetHashCode() ^ IpAddress.GetHashCode() ^ Port.GetHashCode() ^ RingLevel.GetHashCode();
 		}
 
 		public bool Equals(NodeDescriptor other) {
-			return Id.Equals(other.Id) && Port.Equals(other.Port) && IpAddress.Equals(IpAddress);
+			return Id.Equals(other.Id) && Port.Equals(other.Port) && IpAddress.Equals(other.IpAddress) && RingLevel.Equals(other.RingLevel);
 		}
 
-		private ulong GetNodeId() {
-			var prv = new SHA1CryptoServiceProvider();
-			var hashInput = Encoding.ASCII.GetBytes(IpAddress + ":" + Port);
-			return BitConverter.ToUInt64(prv.ComputeHash(hashInput), 0);
+		public byte[] ToHashFunctionArgument() {
+			return Encoding.ASCII.GetBytes(IpAddress + ":" + Port + "," + RingLevel);
 		}
 	}
 }
