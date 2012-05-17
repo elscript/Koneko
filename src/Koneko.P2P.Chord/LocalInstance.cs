@@ -11,6 +11,7 @@ using NReco;
 using Koneko.Common.Hashing;
 
 namespace Koneko.P2P.Chord {
+	[ServiceBehavior(InstanceContextMode=InstanceContextMode.Single)]
 	public class LocalInstance : INodeService, IDisposable {
 		private readonly Random Rnd;
 		private IList<CancellableTask> BackgroundTasks { get; set; }
@@ -32,12 +33,12 @@ namespace Koneko.P2P.Chord {
 		public int RingLength { get; private set; }
 		public LocalNodeDescriptor LocalNode { get; private set; }
 
-		public LocalInstance(int ringLength, int ringLevel, int localPort, IProvider<byte[], ulong> hashKeyPrv) {
+		public LocalInstance(int ringLength, int ringLevel, string ipAddress, int localPort, IProvider<byte[], ulong> hashKeyPrv) {
 			Rnd = new Random();
 			RingLength = ringLength;
 			BackgroundTasks = new List<CancellableTask>();
 			ObjectHashKeyPrv = hashKeyPrv;
-			LocalNode = new LocalNodeDescriptor { Endpoint = new NodeDescriptor("127.0.0.1", localPort, ringLevel, hashKeyPrv) };
+			LocalNode = new LocalNodeDescriptor { Endpoint = new NodeDescriptor(ipAddress, localPort, ringLevel, hashKeyPrv) };
 		}
 
 		public void Join(NodeDescriptor knownNode = null) {
@@ -196,9 +197,8 @@ namespace Koneko.P2P.Chord {
 
 		private ulong GetFingerTableKey(ulong nodeId, int position) {
 			var result = nodeId + (ulong)Math.Pow(2, position);
-			return result > (ulong)RingLength
-					? result % (ulong)Math.Pow(2, RingLength)
-					: result;
+			var modulo = (ulong)Math.Pow(2, RingLength);
+			return result > modulo ? result % modulo : result;
 		}
 
 		public void Dispose() {

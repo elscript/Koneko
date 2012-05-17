@@ -5,6 +5,8 @@ using System.Text;
 using System.ServiceModel;
 using System.ServiceModel.Description;
 using System.ServiceModel.Channels;
+using System.Net;
+using System.Net.Sockets;
 
 using Koneko.Common.Storage;
 using Koneko.Common.Hashing;
@@ -17,8 +19,9 @@ namespace Koneko.P2P.Chord.ConsoleApp {
 			var ringLevels = args.Length > 0 ? Convert.ToInt32(args[0]) : 1;
 			var ringLength = args.Length > 1 ? Convert.ToInt32(args[1]) : 5;
 			var localPort = args.Length > 2 ? Convert.ToInt32(args[2]) : 9999;
+			var localIp = GetLocalIpAddress();
 
-			var hashKeyPrv = new SHA1ObjectHashKeyProvider();
+			var hashKeyPrv = new SHA1ObjectHashKeyProvider() { Modulo = (ulong)Math.Pow(2, ringLength) };
 
 			var localInstances = new List<LocalInstance>();
 			var localStorages = new List<LocalStorage>();
@@ -29,6 +32,7 @@ namespace Koneko.P2P.Chord.ConsoleApp {
 				var localInstance = new LocalInstance(
 										ringLength: ringLength, 
 										ringLevel: i, 
+										ipAddress: localIp,
 										localPort: localPort, 
 										hashKeyPrv: hashKeyPrv
 									);
@@ -48,7 +52,7 @@ namespace Koneko.P2P.Chord.ConsoleApp {
 									};
 				localStorages.Add(localStorage);
 
-				var storageSrvHost = new ServiceHost(localStorage, new Uri("net.tcp://127.0.0.1:" + localPort));
+				var storageSrvHost = new ServiceHost(localStorage, new Uri("net.tcp://127.0.0.1:" + (localPort + 1)));
 				storageSrvHost.AddServiceEndpoint(
 					typeof(IStorageService),
 					new NetTcpBinding(),
@@ -117,6 +121,12 @@ namespace Koneko.P2P.Chord.ConsoleApp {
 					);
 				}
 			}
+		}
+
+		private static string GetLocalIpAddress() {
+			var host = Dns.GetHostEntry(Dns.GetHostName());
+			var result = host.AddressList.FirstOrDefault(ip => ip.AddressFamily == AddressFamily.InterNetwork);
+			return result != null ? result.ToString() : "127.0.0.1";
 		}
 	}
 }

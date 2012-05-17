@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.ServiceModel;
 
 using NReco;
 
@@ -10,6 +11,7 @@ using Koneko.Common.Storage;
 using Koneko.P2P.Chord;
 
 namespace Koneko.P2P.Chord.Storage {
+	[ServiceBehavior(InstanceContextMode=InstanceContextMode.Single)]
 	public class LocalStorage : IStorageService, IDisposable {
 		public LocalInstance LocalInstance { get; set; }
 
