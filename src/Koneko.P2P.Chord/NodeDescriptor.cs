@@ -64,5 +64,9 @@ namespace Koneko.P2P.Chord {
 		public byte[] ToHashFunctionArgument() {
 			return Encoding.ASCII.GetBytes(IpAddress + ":" + Port + "," + RingLevel);
 		}
+
+		public override string ToString() {
+			return IpAddress + ":" + Port + "," + RingLevel;
+		}
 	}
 }

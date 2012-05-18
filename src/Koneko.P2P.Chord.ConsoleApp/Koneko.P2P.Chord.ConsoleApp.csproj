@@ -34,8 +34,14 @@
     <StartupObject />
   </PropertyGroup>
   <ItemGroup>
+    <Reference Include="log4net">
+      <HintPath>..\..\bin\log4net.dll</HintPath>
+    </Reference>
     <Reference Include="NReco">
       <HintPath>..\..\bin\NReco.dll</HintPath>
+    </Reference>
+    <Reference Include="NReco.Log4Net">
+      <HintPath>..\..\bin\NReco.Log4Net.dll</HintPath>
     </Reference>
     <Reference Include="System" />
     <Reference Include="System.Core" />
@@ -59,6 +65,11 @@
       <Project>{4D7C01B4-440B-4896-A192-C7F0E7F363D4}</Project>
       <Name>Koneko.P2P.Chord</Name>
     </ProjectReference>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="App.config">
+      <SubType>Designer</SubType>
+    </None>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
