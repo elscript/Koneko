@@ -21,6 +21,7 @@ namespace Koneko.P2P.Chord.ConsoleApp {
 	public class Program {
 		private static ILog Log = LogManager.GetLogger(typeof(Program));
 
+		[STAThread]
 		public static void Main(string[] args) {
 			try {
 				// forcing english language exception
@@ -56,7 +57,7 @@ namespace Koneko.P2P.Chord.ConsoleApp {
 					nodeSrvHost.AddServiceEndpoint(
 						typeof(INodeService),
 						new NetTcpBinding(),
-						"net.tcp://" + localIp + ":" + localPort //"net.tcp://127.0.0.1:" + localPort + localInstance.GetRemoteServiceUrlPart()
+						"net.tcp://" + localIp + ":" + localPort + localInstance.GetRemoteServiceUrlPart()
 					);
 					srvHosts.Add(nodeSrvHost);
 
@@ -70,7 +71,7 @@ namespace Koneko.P2P.Chord.ConsoleApp {
 					storageSrvHost.AddServiceEndpoint(
 						typeof(IStorageService),
 						new NetTcpBinding(),
-						"net.tcp://127.0.0.1:" + (localPort + 1) + localStorage.GetRemoteServiceUrlPart()
+						"net.tcp://" + localIp + ":" + (localPort + 1) + localStorage.GetRemoteServiceUrlPart()
 					);
 					srvHosts.Add(storageSrvHost);*/
 				}
@@ -128,12 +129,29 @@ namespace Koneko.P2P.Chord.ConsoleApp {
 							"test", "foo", "baz", "bar"
 						});
 					}*/
+				} else if (cmd == "info") {
+					ShowLocalInfo(localInstances);
 				} else if (cmd == "exit") {
 					break;
 				} else {
-					Console.WriteLine("join <ipaddress>:<port> : Joins the network with known node \r\njoin : Create new network \r\nexit : Exit the application \r\n");
+					Console.WriteLine("join <ipaddress>:<port> : Joins the network with known node \r\ninfo: show info about local node \r\njoin : Create new network \r\nexit : Exit the application \r\n");
 				}
 			}
+		}
+
+		private static void ShowLocalInfo(IList<LocalInstance> localInstances) {
+			Console.WriteLine("===============LOCAL INFO BEGIN=================");
+			foreach (var inst in localInstances) {
+				Console.WriteLine("**** Node {0} ****", inst.LocalNode.Endpoint);
+				Console.WriteLine("Ring position: {0}", inst.LocalNode.Id);
+				Console.WriteLine("Successor: {0}", inst.LocalNode.Successor != null ? inst.LocalNode.Successor.ToString() : "none");
+				Console.WriteLine("Predecessor: {0}", inst.LocalNode.Predecessor != null ? inst.LocalNode.Predecessor.ToString() : "none");
+				Console.WriteLine("Fingers:");
+				foreach (var f in inst.LocalNode.Fingers) {
+					Console.WriteLine("\t Start: {0}, Node: {1}", f.Key, f.Value);
+				}
+			}
+			Console.WriteLine("================LOCAL INFO END==================");
 		}
 
 		private static string GetLocalIpAddress() {

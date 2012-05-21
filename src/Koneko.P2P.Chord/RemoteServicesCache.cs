@@ -21,7 +21,7 @@ namespace Koneko.P2P.Chord {
 			if (!Cache.ContainsKey(node)) {
                 var srvFactory = new ChannelFactory<ServiceT>(
 										new NetTcpBinding(),
-										"net.tcp://" + node.IpAddress + ":" + node.Port//"net.tcp://" + node.IpAddress + ":" + node.Port + ServiceUrlPart
+										"net.tcp://" + node.IpAddress + ":" + node.Port + ServiceUrlPart
 								);
                 var srv = srvFactory.CreateChannel();
 				Cache.Add(node, srv);

@@ -13,6 +13,7 @@ namespace Koneko.P2P.Chord {
 		public IList<KeyValuePair<ulong, NodeDescriptor>> Fingers { get; set; }
 		public NodeDescriptor Endpoint { get; set; }
 		public LocalNodeState State { get; set; }
+		public bool IsSingleInRing { get; set; }
 
 		public NodeDescriptor Successor {
 			get { 
@@ -30,6 +31,7 @@ namespace Koneko.P2P.Chord {
 		public LocalNodeDescriptor() {
 			Fingers = new List<KeyValuePair<ulong, NodeDescriptor>>();
 			State = LocalNodeState.Disconnected;
+			IsSingleInRing = false;
 		}
 	}
 }
