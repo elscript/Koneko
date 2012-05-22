@@ -13,7 +13,7 @@ namespace Koneko.P2P.Chord {
 		public IList<KeyValuePair<ulong, NodeDescriptor>> Fingers { get; set; }
 		public NodeDescriptor Endpoint { get; set; }
 		public LocalNodeState State { get; set; }
-		public bool IsSingleInRing { get; set; }
+		public int RingLength { get; set; }
 
 		public NodeDescriptor Successor {
 			get { 
@@ -21,6 +21,9 @@ namespace Koneko.P2P.Chord {
 					return Fingers[0].Value;
 				}
 				return null;
+			} 
+			set {
+				Fingers[0] = new KeyValuePair<ulong,NodeDescriptor>(TopologyHelper.GetFingerTableKey(Endpoint.Id, 0, RingLength), value);
 			}
 		}
 
@@ -31,7 +34,6 @@ namespace Koneko.P2P.Chord {
 		public LocalNodeDescriptor() {
 			Fingers = new List<KeyValuePair<ulong, NodeDescriptor>>();
 			State = LocalNodeState.Disconnected;
-			IsSingleInRing = false;
 		}
 	}
 }

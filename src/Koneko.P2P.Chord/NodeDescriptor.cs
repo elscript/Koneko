@@ -66,7 +66,7 @@ namespace Koneko.P2P.Chord {
 		}
 
 		public override string ToString() {
-			return IpAddress + ":" + Port + "," + RingLevel;
+			return Id + " = " + IpAddress + ":" + Port + ", " + RingLevel;
 		}
 	}
 }

@@ -21,5 +21,11 @@ namespace Koneko.P2P.Chord {
 				return !IsInCircularInterval(value, right, left, !includeLeft, !includeRight);
 			}
 		}
+
+		public static ulong GetFingerTableKey(ulong nodeId, int position, int ringLength) {
+			var result = nodeId + (ulong)Math.Pow(2, position);
+			var modulo = (ulong)Math.Pow(2, ringLength);
+			return result > modulo ? result % modulo : result;
+		}
 	}
 }

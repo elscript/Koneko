@@ -33,7 +33,7 @@ namespace Koneko.P2P.Chord.ConsoleApp {
 
 				var ringLevels = args.Length > 0 ? Convert.ToInt32(args[0]) : 1;
 				var ringLength = args.Length > 1 ? Convert.ToInt32(args[1]) : 5;
-				var localPort = args.Length > 2 ? Convert.ToInt32(args[2]) : new Random().Next(9999, 19999);
+				var localPort = args.Length > 2 ? Convert.ToInt32(args[2]) : new Random().Next(10000, 10005);
 				var localIp = GetLocalIpAddress();
 
 				var hashKeyPrv = new SHA1ObjectHashKeyProvider() { Modulo = (ulong)Math.Pow(2, ringLength) };

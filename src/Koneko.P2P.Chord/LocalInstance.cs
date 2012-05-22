@@ -12,7 +12,7 @@ using NReco.Logging;
 using Koneko.Common.Hashing;
 
 namespace Koneko.P2P.Chord {
-	[ServiceBehavior(InstanceContextMode=InstanceContextMode.Single)]
+	[ServiceBehavior(InstanceContextMode=InstanceContextMode.Single, ConcurrencyMode=ConcurrencyMode.Single, IncludeExceptionDetailInFaults=true)]
 	public class LocalInstance : INodeService, IDisposable {
 		private static ILog Log = LogManager.GetLogger(typeof(LocalInstance));
 
@@ -41,10 +41,10 @@ namespace Koneko.P2P.Chord {
 			RingLength = ringLength;
 			BackgroundTasks = new List<CancellableTask>();
 			ObjectHashKeyPrv = hashKeyPrv;
-			LocalNode = new LocalNodeDescriptor { Endpoint = new NodeDescriptor(ipAddress, localPort, ringLevel, hashKeyPrv) };
+			LocalNode = new LocalNodeDescriptor { Endpoint = new NodeDescriptor(ipAddress, localPort, ringLevel, hashKeyPrv), RingLength = RingLength };
 			// dummy init for fingers table
 			for (int i = 0; i <= RingLength - 1; ++i) {
-				LocalNode.Fingers.Add(new KeyValuePair<ulong, NodeDescriptor>(GetFingerTableKey(LocalNode.Id, i), LocalNode.Endpoint));
+				LocalNode.Fingers.Add(new KeyValuePair<ulong, NodeDescriptor>(TopologyHelper.GetFingerTableKey(LocalNode.Id, i, RingLength), LocalNode.Endpoint));
 			}
 		}
 
@@ -61,20 +61,18 @@ namespace Koneko.P2P.Chord {
 				} else {
 					Log.Write(LogEvent.Info, "Joining the ring with node {0}, bootstrapper node {1}, ring length {2}", LocalNode.Endpoint, knownNode, RingLength);
 					var knownNodeSrv = NodeServices.GetRemoteNodeService(knownNode);
-					var fingerKey = GetFingerTableKey(LocalNode.Id, 0);
-					var fingerNode = knownNodeSrv.FindSuccessorForId(LocalNode.Id, LocalNode.Endpoint);
-					LocalNode.Fingers[0] = new KeyValuePair<ulong, NodeDescriptor>(fingerKey, fingerNode);	
+					var nodeSuccessor = knownNodeSrv.FindSuccessorForId(LocalNode.Id);
+					// set my own successor & predecessor
+					LocalNode.Successor = nodeSuccessor;
+					LocalNode.Predecessor = nodeSuccessor;
+					// try fixing the successor/predecessor of the seed node
+					knownNodeSrv.FixSeedNode(LocalNode.Endpoint);
 					Log.Write(LogEvent.Info, "Joined the ring with node {0}, bootstrapper node {1}, ring length {2}", LocalNode.Endpoint, knownNode, RingLength);
 				}
 			} else {
 				// start new ring
 				Log.Write(LogEvent.Info, "Starting new ring with node {0}, ring length {1}", LocalNode.Endpoint, RingLength);
-				LocalNode.Fingers[0] = new KeyValuePair<ulong, NodeDescriptor>(GetFingerTableKey(LocalNode.Id, 0), LocalNode.Endpoint);
-				/*for (int i = 0; i <= RingLength - 1; ++i) {
-					LocalNode.Fingers.Add(new KeyValuePair<ulong, NodeDescriptor>(GetFingerTableKey(LocalNode.Id, i), LocalNode.Endpoint));
-				}*/
-				//LocalNode.Predecessor = LocalNode.Endpoint;
-				LocalNode.IsSingleInRing = true;
+				LocalNode.Predecessor = LocalNode.Endpoint;
 				Log.Write(LogEvent.Info, "Started new ring with node {0}, ring length {1}", LocalNode.Endpoint, RingLength);
 			}
 
@@ -90,7 +88,7 @@ namespace Koneko.P2P.Chord {
 					() => {
 						while (!stabilizeTaskCts.IsCancellationRequested) {
 							Stabilize();
-							Thread.Sleep(5000);
+							Thread.Sleep(3000);
 						}
 					},
 					stabilizeTaskCts.Token
@@ -104,7 +102,7 @@ namespace Koneko.P2P.Chord {
 						while (!fixFingersTaskCts.IsCancellationRequested) {
 							FixFingers(fingerRowIdxToFix);
 							fingerRowIdxToFix = fingerRowIdxToFix == RingLength - 1 ? 0 : fingerRowIdxToFix + 1;
-							Thread.Sleep(5000);
+							Thread.Sleep(3000);
 						}
 					},
 					fixFingersTaskCts.Token
@@ -140,16 +138,34 @@ namespace Koneko.P2P.Chord {
 			Log.Write(LogEvent.Debug, "Calling stabilize for node {0}", LocalNode.Endpoint);
 			var successorNodeSrv = NodeServices.GetRemoteNodeService(LocalNode.Successor);
 			var succPredecessor = successorNodeSrv.GetNodePredecessor();
-			if (TopologyHelper.IsInCircularInterval(succPredecessor.Id, LocalNode.Id, LocalNode.Successor.Id)) {
-				LocalNode.Fingers[0] = new KeyValuePair<ulong, NodeDescriptor>(LocalNode.Fingers[0].Key, succPredecessor);
+			if (succPredecessor != null) {
+				if (TopologyHelper.IsInCircularInterval(succPredecessor.Id, LocalNode.Id, LocalNode.Successor.Id)) {
+					LocalNode.Successor = succPredecessor;
+				}
+				successorNodeSrv.FixPredecessor(LocalNode.Endpoint);
+				Log.Write(LogEvent.Debug, "Finished stabilizing for node {0}", LocalNode.Endpoint);
+			} else {
+				Log.Write(LogEvent.Debug, "Cannot perform stabilizing for node {0}, the successor's ({1}) predecessor node is null", LocalNode.Endpoint, LocalNode.Successor);
 			}
-			successorNodeSrv.FixPredecessor(LocalNode.Endpoint);
-			Log.Write(LogEvent.Debug, "Finished stabilizing for node {0}", LocalNode.Endpoint);
 		}
 
 		public void FixPredecessor(NodeDescriptor candidateNode) {
-			if (LocalNode.Predecessor == null || TopologyHelper.IsInCircularInterval(candidateNode.Id, LocalNode.Predecessor.Id, LocalNode.Id)) {
+			Log.Write(LogEvent.Debug, "Calling fix predecessor for node {0} with candidate {1}", LocalNode.Endpoint, candidateNode);
+			if (LocalNode.Predecessor == null || LocalNode.Predecessor.Equals(LocalNode.Endpoint) || TopologyHelper.IsInCircularInterval(candidateNode.Id, LocalNode.Predecessor.Id, LocalNode.Id)) {
 				LocalNode.Predecessor = candidateNode;
+				Log.Write(LogEvent.Debug, "Fixed predecessor for node {0} with candidate {1}", LocalNode.Endpoint, candidateNode);
+			}
+		}
+
+		// special method that checks if the seed node succ/pred are ok
+		public void FixSeedNode(NodeDescriptor joinedNode) {
+			if (LocalNode.Successor.Equals(LocalNode.Endpoint)) {
+				 // its not correct because there is at least one more node in the network (which called this method)
+				LocalNode.Successor = joinedNode;
+			}
+			if (LocalNode.Predecessor == null || LocalNode.Predecessor.Equals(LocalNode.Endpoint)) {
+				 // its not correct because there is at least one more node in the network (which called this method)
+				LocalNode.Predecessor = joinedNode;
 			}
 		}
 
@@ -164,22 +180,11 @@ namespace Koneko.P2P.Chord {
 			
 			var successorForFinger = FindSuccessorForId(LocalNode.Fingers[actualFingerRowIdx].Key);
 
-			LocalNode.Fingers[actualFingerRowIdx] = new KeyValuePair<ulong, NodeDescriptor>(GetFingerTableKey(LocalNode.Id, actualFingerRowIdx), successorForFinger);
+			LocalNode.Fingers[actualFingerRowIdx] = new KeyValuePair<ulong, NodeDescriptor>(TopologyHelper.GetFingerTableKey(LocalNode.Id, actualFingerRowIdx, RingLength), successorForFinger);
 			Log.Write(LogEvent.Debug, "Finished fixing fingers for node {0}, finger row position {1}", LocalNode.Endpoint, actualFingerRowIdx);
 		}
 
-		public NodeDescriptor FindSuccessorForId(ulong id, NodeDescriptor newJoinNode = null) {
-			// special code for the single node in the ring when the second node enters
-			if (LocalNode.IsSingleInRing && newJoinNode != null) {
-				// if there are only two nodes in the ring and the current one is the bootstrapper -> then the joining node will be its successor and vice versa
-				LocalNode.Fingers[0] = new KeyValuePair<ulong,NodeDescriptor>(LocalNode.Fingers[0].Key, newJoinNode);
-				// the same for predecessors
-				LocalNode.Predecessor = newJoinNode;
-				// reset the marker
-				LocalNode.IsSingleInRing = false;
-				return LocalNode.Endpoint;
-			}
-
+		public NodeDescriptor FindSuccessorForId(ulong id) {
 			// check if my successor is actually the successor of this id
 			if (TopologyHelper.IsInCircularInterval(id, LocalNode.Id, LocalNode.Successor.Id, includeRight: true)) {
 				return LocalNode.Successor;
@@ -196,7 +201,7 @@ namespace Koneko.P2P.Chord {
 			}
 
 			var closestPredecessorFromFingersNodeSrv = NodeServices.GetRemoteNodeService(closestPredecessorFromFingers);
-			return closestPredecessorFromFingersNodeSrv.FindSuccessorForId(id, newJoinNode);
+			return closestPredecessorFromFingersNodeSrv.FindSuccessorForId(id);
 		}
 
 		private NodeDescriptor FindClosestPredecessorFromFingers(ulong id) {
@@ -220,12 +225,6 @@ namespace Koneko.P2P.Chord {
 
 		private int GetRandomFingerTableIndex() {
 			return Rnd.Next(1, (int)RingLength);
-		}
-
-		private ulong GetFingerTableKey(ulong nodeId, int position) {
-			var result = nodeId + (ulong)Math.Pow(2, position);
-			var modulo = (ulong)Math.Pow(2, RingLength);
-			return result > modulo ? result % modulo : result;
 		}
 
 		public void Dispose() {
