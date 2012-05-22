@@ -205,12 +205,18 @@ namespace Koneko.P2P.Chord {
 		}
 
 		private NodeDescriptor FindClosestPredecessorFromFingers(ulong id) {
-			var rightVal = LocalNode.Id;
+			/*var rightVal = LocalNode.Id;
 			for (int i = RingLength - 1; i >= 0; --i) {
 				if (TopologyHelper.IsInCircularInterval(id, LocalNode.Fingers[i].Key, rightVal)) {
 					return LocalNode.Fingers[i].Value;
 				}
 				rightVal = LocalNode.Fingers[i].Key;
+			}
+			return LocalNode.Endpoint;*/
+			for (int i = RingLength - 1; i >= 0; --i) {
+				if (TopologyHelper.IsInCircularInterval(LocalNode.Fingers[i].Value.Id, LocalNode.Id, id)) {
+					return LocalNode.Fingers[i].Value;
+				}
 			}
 			return LocalNode.Endpoint;
 		}
