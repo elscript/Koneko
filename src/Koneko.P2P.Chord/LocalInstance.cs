@@ -414,7 +414,7 @@ namespace Koneko.P2P.Chord {
 		private void SetSuccessorFromCache() {
 			foreach (var succ in LocalNode.SuccessorCache) {
 				if (!succ.Equals(LocalNode.Endpoint)) {
-					LocalNode.Endpoint = succ;
+					LocalNode.Successor = succ;
 					return;
 				}
 			}
