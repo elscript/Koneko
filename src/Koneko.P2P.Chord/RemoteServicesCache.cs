@@ -9,22 +9,28 @@ using Koneko.Common.Storage;
 
 namespace Koneko.P2P.Chord {
 	public class RemoteServicesCache<ServiceT> : IDisposable {
-		private IDictionary<NodeDescriptor, ServiceT> Cache { get; set; }
-
+		private IDictionary<NodeDescriptor, RemoteServicesCacheEntry<ServiceT>> Cache { get; set; }
+		
+		public ServiceT LocalService { get; set; }
+		public NodeDescriptor LocalServiceNode { get; set; }
 		public string ServiceUrlPart { get; set; }
 
 		public RemoteServicesCache() {
-			Cache = new Dictionary<NodeDescriptor, ServiceT>();
+			Cache = new Dictionary<NodeDescriptor, RemoteServicesCacheEntry<ServiceT>>();
 		}
 
-		public ServiceT GetRemoteNodeService(NodeDescriptor node) {
+		public RemoteServicesCacheEntry<ServiceT> GetRemoteNodeService(NodeDescriptor node) {
+			// return local service for local nodes
+			if (node.Equals(LocalServiceNode)) {
+				return new RemoteServicesCacheEntry<ServiceT> { Service = LocalService };
+			}
 			if (!Cache.ContainsKey(node)) {
                 var srvFactory = new ChannelFactory<ServiceT>(
 										new NetTcpBinding(),
 										"net.tcp://" + node.IpAddress + ":" + node.Port + ServiceUrlPart
 								);
                 var srv = srvFactory.CreateChannel();
-				Cache.Add(node, srv);
+				Cache.Add(node, new RemoteServicesCacheEntry<ServiceT> { Service = srv });
 			}
 			return Cache[node];
 		}
@@ -32,13 +38,24 @@ namespace Koneko.P2P.Chord {
 		public void Clear() {
 			foreach (var s in Cache) {
 				try {
-					((ICommunicationObject)s.Value).Close();
+					((ICommunicationObject)s.Value.Service).Close();
 				} catch { }
 			}
+			Cache.Clear();
 		}
 
 		public void Dispose() {
 			Clear();
+		}
+	}
+
+	public class RemoteServicesCacheEntry<ServiceT> {
+		public ServiceT Service { get; set; }
+		public bool IsUnavailable { 
+			get { return ((ICommunicationObject)Service).State == CommunicationState.Faulted 
+						|| ((ICommunicationObject)Service).State == CommunicationState.Closed 
+						|| ((ICommunicationObject)Service).State == CommunicationState.Closing;
+			}
 		}
 	}
 }

@@ -43,7 +43,7 @@ namespace Koneko.P2P.Chord.Storage {
 				PutToLocalStorage(val);
 			} else {
 				var responsibleNodeSrv = NodeServices.GetRemoteNodeService(responsibleNode);
-				responsibleNodeSrv.Put(val);
+				responsibleNodeSrv.Service.Put(val);
 			}
 		}
 
@@ -53,7 +53,7 @@ namespace Koneko.P2P.Chord.Storage {
 				return GetFromLocalStorage(q);
 			} else {
 				var responsibleNodeSrv = NodeServices.GetRemoteNodeService(responsibleNode);
-				return responsibleNodeSrv.Get(q);
+				return responsibleNodeSrv.Service.Get(q);
 			}
 		}
 

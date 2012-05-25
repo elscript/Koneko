@@ -11,6 +11,10 @@ using NReco;
 using Koneko.Common.Hashing;
 
 namespace Koneko.P2P.Chord {
+	public enum NodeState {
+		Disconnected, Connected
+	}
+
 	[DataContract]
 	public class NodeDescriptor : IEquatable<NodeDescriptor>, IHashFunctionArgument {
 		[DataMember]
@@ -67,6 +71,10 @@ namespace Koneko.P2P.Chord {
 
 		public override string ToString() {
 			return Id + " = " + IpAddress + ":" + Port + ", " + RingLevel;
+		}
+
+		public string ToShortString() {
+			return Id + ", " + RingLevel;
 		}
 	}
 }

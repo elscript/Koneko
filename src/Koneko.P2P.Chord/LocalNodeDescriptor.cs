@@ -4,16 +4,27 @@ using System.Linq;
 using System.Text;
 
 namespace Koneko.P2P.Chord {
-	public enum LocalNodeState {
-		Disconnected, Joined
-	}
-
 	public class LocalNodeDescriptor {
 		public NodeDescriptor Predecessor { get; set; }
 		public IList<KeyValuePair<ulong, NodeDescriptor>> Fingers { get; set; }
+		public int SuccessorCacheSize { get; set; }
 		public NodeDescriptor Endpoint { get; set; }
-		public LocalNodeState State { get; set; }
 		public int RingLength { get; set; }
+		public NodeDescriptor InitEndpoint { get; set; }
+		public NodeState State { get; set; }
+
+		private NodeDescriptor[] _SuccessorCache;
+		public NodeDescriptor[] SuccessorCache {
+			get {
+				if (_SuccessorCache == null) {
+					_SuccessorCache = new NodeDescriptor[SuccessorCacheSize];
+				}
+				return _SuccessorCache;
+			}
+			set {
+				_SuccessorCache = value;
+			}
+		}
 
 		public NodeDescriptor Successor {
 			get { 
@@ -33,7 +44,7 @@ namespace Koneko.P2P.Chord {
 
 		public LocalNodeDescriptor() {
 			Fingers = new List<KeyValuePair<ulong, NodeDescriptor>>();
-			State = LocalNodeState.Disconnected;
+			SuccessorCacheSize = 2;
 		}
 	}
 }

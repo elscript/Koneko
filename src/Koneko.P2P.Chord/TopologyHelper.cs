@@ -10,15 +10,9 @@ namespace Koneko.P2P.Chord {
 				return value == right;
 			}
 			if (right > left) {
-				if (includeLeft) {
-					left = left - 1;
-				}
-				if (includeRight) {
-					right = right + 1;
-				}
-				return value > left && value < right;
+				return (includeLeft ? value >= left : value > left) && (includeRight ? value <= right : value < right);
 			} else {
-				return !IsInCircularInterval(value, right, left, !includeLeft, !includeRight);
+				return (includeLeft ? value >= left : value > left) || (includeRight ? value <= right : value < right);
 			}
 		}
 
