@@ -13,6 +13,8 @@ namespace Koneko.P2P.Chord {
 		public NodeDescriptor InitEndpoint { get; set; }
 		public NodeState State { get; set; }
 
+		private readonly Random Rnd;
+
 		private NodeDescriptor[] _SuccessorCache;
 		public NodeDescriptor[] SuccessorCache {
 			get {
@@ -42,9 +44,45 @@ namespace Koneko.P2P.Chord {
 			get { return Endpoint.Id; }
 		}
 
-		public LocalNodeDescriptor() {
-			Fingers = new List<KeyValuePair<ulong, NodeDescriptor>>();
+		public LocalNodeDescriptor(NodeDescriptor endpoint, int ringLength) {
+			Rnd = new Random();
+
+			Endpoint = endpoint;
+			RingLength = ringLength;
 			SuccessorCacheSize = 2;
+
+			// dummy init for fingers table
+			InitFingerTable();
+			// dummy init for successor cache
+			InitSuccessorCache();
+		}
+
+		public void InitFingerTable() {
+			if (Fingers == null) {
+				Fingers = new List<KeyValuePair<ulong, NodeDescriptor>>();
+			}
+			Fingers.Clear();
+			for (int i = 0; i <= RingLength - 1; ++i) {
+				Fingers.Add(new KeyValuePair<ulong, NodeDescriptor>(TopologyHelper.GetFingerTableKey(Id, i, RingLength), Endpoint));
+			}
+		}
+
+		public void InitSuccessorCache() {
+			SuccessorCache = new NodeDescriptor[SuccessorCacheSize];
+			for (int i = 0; i <= SuccessorCacheSize - 1; ++i) {
+				SuccessorCache[i] = Endpoint;
+			}
+		}
+
+		public void Reset() {
+			InitFingerTable();
+			InitSuccessorCache();
+			InitEndpoint = null;
+			Predecessor = null;
+		}
+
+		public int GetRandomFingerTableIndex() {
+			return Rnd.Next(1, (int)RingLength);
 		}
 	}
 }

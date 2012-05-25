@@ -49,6 +49,7 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="CommunicationManager.cs" />
     <Compile Include="INodeService.cs" />
     <Compile Include="LocalNodeDescriptor.cs" />
     <Compile Include="Storage\LocalStorage.cs" />

@@ -44,6 +44,7 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="NetworkHelper.cs" />
     <Compile Include="Hashing\HashableString.cs" />
     <Compile Include="Hashing\IHashFunctionArgument.cs" />
     <Compile Include="Hashing\SHA1ObjectHashKeyProvider.cs" />

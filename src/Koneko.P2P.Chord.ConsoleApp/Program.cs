@@ -13,6 +13,7 @@ using System.Net.Sockets;
 
 using NReco.Logging;
 
+using Koneko.Common;
 using Koneko.Common.Storage;
 using Koneko.Common.Hashing;
 using Koneko.P2P.Chord;
@@ -35,65 +36,27 @@ namespace Koneko.P2P.Chord.ConsoleApp {
 				var ringLevels = args.Length > 0 ? Convert.ToInt32(args[0]) : 1;
 				var ringLength = args.Length > 1 ? Convert.ToInt32(args[1]) : 8;
 				var localPort = args.Length > 2 ? Convert.ToInt32(args[2]) : new Random().Next(10000, 20000);
-				var localIp = GetLocalIpAddress();
 
 				var hashKeyPrv = new SHA1ObjectHashKeyProvider() { Modulo = (ulong)Math.Pow(2, ringLength) };
 
 				var localInstances = new List<LocalInstance>();
-				var localStorages = new List<LocalStorage>();
-				var srvHosts = new List<ServiceHost>(); 
 
-				for (int i = 1; i <= ringLevels; ++i) {
+				for (int currRingLvl = 1; currRingLvl <= ringLevels; ++currRingLvl) {
 					// init instance service
 					var localInstance = new LocalInstance(
 											ringLength: ringLength, 
-											ringLevel: i, 
-											ipAddress: localIp,
+											ringLevel: currRingLvl, 
 											localPort: localPort, 
 											hashKeyPrv: hashKeyPrv
 										);
 					localInstances.Add(localInstance);
-
-					var nodeSrvHost = new ServiceHost(localInstance);
-					nodeSrvHost.AddServiceEndpoint(
-						typeof(INodeService),
-						new NetTcpBinding(),
-						"net.tcp://" + localIp + ":" + localPort + localInstance.GetRemoteServiceUrlPart()
-					);
-					srvHosts.Add(nodeSrvHost);
-
-					// init storage service
-					/*var localStorage = new LocalStorage() {
-											LocalInstance = localInstance
-										};
-					localStorages.Add(localStorage);
-
-					var storageSrvHost = new ServiceHost(localStorage);
-					storageSrvHost.AddServiceEndpoint(
-						typeof(IStorageService),
-						new NetTcpBinding(),
-						"net.tcp://" + localIp + ":" + (localPort + 1) + localStorage.GetRemoteServiceUrlPart()
-					);
-					srvHosts.Add(storageSrvHost);*/
 				}
 
 				try {
-					foreach (var host in srvHosts) {
-						host.Open();
-					}
-					ProcessCommands(localInstances, localStorages);
+					ProcessCommands(localInstances);
 				} finally {
-					foreach (var host in srvHosts) {
-						if (host.State != CommunicationState.Closed) {
-							host.Close();
-						}
-						((IDisposable)host).Dispose();
-					}
-					foreach (var inst in localInstances) {
-						((IDisposable)inst).Dispose();
-					}
-					foreach (var stor in localStorages) {
-						((IDisposable)stor).Dispose();
+					foreach (var loc in localInstances) {
+						((IDisposable)loc).Dispose();
 					}
 				}
 			} catch (Exception ex) {
@@ -102,7 +65,7 @@ namespace Koneko.P2P.Chord.ConsoleApp {
 			}
 		}
 
-		private static void ProcessCommands(IList<LocalInstance> localInstances, IList<LocalStorage> localStorages) {
+		private static void ProcessCommands(IList<LocalInstance> localInstances) {
 			CancellationTokenSource showLocalInfoTs = null;
 			while (true) {
 				var cmd = Console.ReadLine();
@@ -125,12 +88,6 @@ namespace Koneko.P2P.Chord.ConsoleApp {
 							inst.Join();
 						}
 					}
-
-					/*foreach (var stor in localStorages) {
-						stor.Join(new HashableString[] { 
-							"test", "foo", "baz", "bar"
-						});
-					}*/
 				} else if (cmd == "info") {
 					ShowLocalInfo(localInstances);
 				} else if (cmd == "startinfo") {
@@ -176,27 +133,29 @@ namespace Koneko.P2P.Chord.ConsoleApp {
 		private static void ShowLocalInfo(IList<LocalInstance> localInstances) {
 			Console.WriteLine("===============LOCAL INFO BEGIN=================");
 			foreach (var inst in localInstances) {
+				Console.WriteLine("===== INSTANCE LEVEL {0} BEGIN =====", inst.LocalNode.Endpoint.RingLevel);
 				Console.WriteLine("**** Node {0} ****", inst.LocalNode.Endpoint);
 				Console.WriteLine("^^^^ Ring position: {0} ^^^^", inst.LocalNode.Id);
-				Console.WriteLine("Bootstrapper: {0}", inst.LocalNode.InitEndpoint != null ? inst.LocalNode.InitEndpoint.ToShortString() : "n/a");
-				Console.WriteLine("Successor: {0}", inst.LocalNode.Successor != null ? inst.LocalNode.Successor.ToShortString() : "n/a");
-				Console.WriteLine("Predecessor: {0}", inst.LocalNode.Predecessor != null ? inst.LocalNode.Predecessor.ToShortString() : "n/a");
-				Console.WriteLine("Fingers:");
-				foreach (var f in inst.LocalNode.Fingers) {
-					Console.WriteLine("\t Start: {0}, Node: {1}", f.Key, f.Value.ToShortString());
+
+				if (inst.LocalNode.State == NodeState.Disconnected) {
+					Console.WriteLine("DISCONNECTED");
+				} else {
+					Console.WriteLine("Bootstrapper: {0}", inst.LocalNode.InitEndpoint != null ? inst.LocalNode.InitEndpoint.ToShortString() : "n/a");
+					Console.WriteLine("Successor: {0}", inst.LocalNode.Successor != null ? inst.LocalNode.Successor.ToShortString() : "n/a");
+					Console.WriteLine("Predecessor: {0}", inst.LocalNode.Predecessor != null ? inst.LocalNode.Predecessor.ToShortString() : "n/a");
+					Console.WriteLine("Fingers:");
+					foreach (var f in inst.LocalNode.Fingers) {
+						Console.WriteLine("\t Start: {0}, Node: {1}", f.Key, f.Value.ToShortString());
+					}
+					Console.WriteLine("Cached successors:");
+					for (int i = 0; i < inst.LocalNode.SuccessorCache.Length; ++i) {
+						Console.WriteLine("\t Position: {0}, Node: {1}", i, inst.LocalNode.SuccessorCache[i].ToShortString());
+					}
 				}
-				Console.WriteLine("Cached successors:");
-				for (int i = 0; i < inst.LocalNode.SuccessorCache.Length; ++i) {
-					Console.WriteLine("\t Position: {0}, Node: {1}", i, inst.LocalNode.SuccessorCache[i].ToShortString());
-				}
+
+				Console.WriteLine("===== INSTANCE LEVEL {0} END =====", inst.LocalNode.Endpoint.RingLevel);
 			}
 			Console.WriteLine("================LOCAL INFO END==================");
-		}
-
-		private static string GetLocalIpAddress() {
-			var host = Dns.GetHostEntry(Dns.GetHostName());
-			var result = host.AddressList.FirstOrDefault(ip => ip.AddressFamily == AddressFamily.InterNetwork);
-			return result != null ? result.ToString() : "127.0.0.1";
 		}
 	}
 }

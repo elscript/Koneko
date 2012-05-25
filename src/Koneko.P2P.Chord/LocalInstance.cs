@@ -9,6 +9,7 @@ using System.ServiceModel;
 using NReco;
 using NReco.Logging;
 
+using Koneko.Common;
 using Koneko.Common.Hashing;
 
 namespace Koneko.P2P.Chord {
@@ -16,17 +17,18 @@ namespace Koneko.P2P.Chord {
 	public class LocalInstance : INodeService, IDisposable {
 		private static ILog Log = LogManager.GetLogger(typeof(LocalInstance));
 
-		private readonly Random Rnd;
 		private IList<CancellableTask> BackgroundTasks { get; set; }
 
 		public IProvider<byte[], ulong> ObjectHashKeyPrv { get; set; }
+		public int RingLength { get; private set; }
+		public LocalNodeDescriptor LocalNode { get; private set; }
 
 		private RemoteServicesCache<INodeService> _NodeServices;
-		public RemoteServicesCache<INodeService> NodeServices {
+		private RemoteServicesCache<INodeService> NodeServices {
 			get {
 				if (_NodeServices == null) {
 					_NodeServices = new RemoteServicesCache<INodeService> { 
-										ServiceUrlPart = GetRemoteServiceUrlPart(),
+										ServiceUrlPart = CommunicationManager.ServiceUrlPart,
 										LocalService = this,
 										LocalServiceNode = LocalNode.Endpoint
 									};
@@ -35,31 +37,24 @@ namespace Koneko.P2P.Chord {
 			}
 		}
 
-		public int RingLength { get; private set; }
-		public LocalNodeDescriptor LocalNode { get; private set; }
+		private CommunicationManager<INodeService> _CommunicationManager;
+		private CommunicationManager<INodeService> CommunicationManager {
+			get {
+				if (_CommunicationManager == null) {
+					_CommunicationManager = new CommunicationManager<INodeService> {
+												LocalService = this,
+												LocalServiceNode = LocalNode.Endpoint
+											};
+				}
+				return _CommunicationManager;
+			}
+		}
 
-		public LocalInstance(int ringLength, int ringLevel, string ipAddress, int localPort, IProvider<byte[], ulong> hashKeyPrv) {
-			Rnd = new Random();
+		public LocalInstance(int ringLength, int ringLevel, int localPort, IProvider<byte[], ulong> hashKeyPrv) {
 			RingLength = ringLength;
 			BackgroundTasks = new List<CancellableTask>();
 			ObjectHashKeyPrv = hashKeyPrv;
-			LocalNode = new LocalNodeDescriptor { Endpoint = new NodeDescriptor(ipAddress, localPort, ringLevel, hashKeyPrv), RingLength = RingLength };
-			// dummy init for fingers table
-			InitFingerTable();
-			// dummy init for successor cache
-			InitSuccessorCache();
-		}
-
-		private void InitFingerTable() {
-			for (int i = 0; i <= RingLength - 1; ++i) {
-				LocalNode.Fingers.Add(new KeyValuePair<ulong, NodeDescriptor>(TopologyHelper.GetFingerTableKey(LocalNode.Id, i, RingLength), LocalNode.Endpoint));
-			}
-		}
-
-		private void InitSuccessorCache() {
-			for (int i = 0; i <= LocalNode.SuccessorCacheSize - 1; ++i) {
-				LocalNode.SuccessorCache[i] = LocalNode.Endpoint;
-			}
+			LocalNode = new LocalNodeDescriptor(new NodeDescriptor(NetworkHelper.GetLocalIpAddress(), localPort, ringLevel, hashKeyPrv), ringLength);
 		}
 
 		public void Join(NodeDescriptor knownNode = null) {
@@ -76,6 +71,13 @@ namespace Koneko.P2P.Chord {
 					return;
 				} else {
 					Log.Write(LogEvent.Info, "Joining the ring with node {0}, bootstrapper node {1}, ring length {2}", LocalNode.Endpoint, knownNode, RingLength);
+
+					try {
+						CommunicationManager.StartCommunication();
+					} catch (Exception ex) {
+						Log.Write(LogEvent.Error, "Cannot start local service for node {0}. Error details: \r\n {1}", LocalNode.Endpoint, ex.ToString());
+					}
+
 					var knownNodeSrv = NodeServices.GetRemoteNodeService(knownNode);
 
 					try {
@@ -111,6 +113,13 @@ namespace Koneko.P2P.Chord {
 			} else {
 				// start new ring
 				Log.Write(LogEvent.Info, "Starting new ring with node {0}, ring length {1}", LocalNode.Endpoint, RingLength);
+
+				try {
+					CommunicationManager.StartCommunication();
+				} catch (Exception ex) {
+					Log.Write(LogEvent.Error, "Cannot start local service for node {0}. Error details: \r\n {1}", LocalNode.Endpoint, ex.ToString());
+				}
+
 				Log.Write(LogEvent.Info, "Started new ring with node {0}, ring length {1}", LocalNode.Endpoint, RingLength);
 			}
 
@@ -129,11 +138,9 @@ namespace Koneko.P2P.Chord {
 					t.Task.Wait();
 				}
 			}
-			InitFingerTable();
-			InitSuccessorCache();
-			LocalNode.InitEndpoint = null;
-			LocalNode.Predecessor = null;
 			NodeServices.Clear();
+			CommunicationManager.StopCommunication();
+			LocalNode.Reset();
 			LocalNode.State = NodeState.Disconnected;
 			Log.Write(LogEvent.Info, "Left the network for node {0}", LocalNode.Endpoint);
 		}
@@ -176,10 +183,6 @@ namespace Koneko.P2P.Chord {
 					fixFingersTaskCts.Token
 				);
 			BackgroundTasks.Add(new CancellableTask { Task = fixFingersTask, TokenSource = fixFingersTaskCts});
-		}
-
-		public string GetRemoteServiceUrlPart() {
-			return "/NodeService/" + LocalNode.Endpoint.RingLevel;
 		}
 
 		public NodeDescriptor FindResponsibleNodeForValue(IHashFunctionArgument val) {
@@ -322,7 +325,7 @@ namespace Koneko.P2P.Chord {
 												? 0
 												: fingerRowIdx.Value 
 											)
-										: GetRandomFingerTableIndex();
+										: LocalNode.GetRandomFingerTableIndex();
 			Log.Write(LogEvent.Debug, "Calling fix fingers for node {0}, finger row position {1}", LocalNode.Endpoint, actualFingerRowIdx);
 			
 			var successorForFinger = FindSuccessorForId(LocalNode.Fingers[actualFingerRowIdx].Key);
@@ -451,11 +454,10 @@ namespace Koneko.P2P.Chord {
 			return LocalNode.SuccessorCache;
 		}
 
-		private int GetRandomFingerTableIndex() {
-			return Rnd.Next(1, (int)RingLength);
-		}
-
 		public void Dispose() {
+			if (CommunicationManager is IDisposable) {
+				((IDisposable)CommunicationManager).Dispose();
+			}
 			if (NodeServices is IDisposable) {
 				((IDisposable)NodeServices).Dispose();
 			}
