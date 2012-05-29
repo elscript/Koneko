@@ -167,7 +167,7 @@ namespace Koneko.P2P.Chord {
 								} else if (InnerTask.CurrentEvent == LocalInstanceEvent.LeaveRequested || InnerTask.CurrentEvent == LocalInstanceEvent.ExitRequested) {
 									Leave();
 									// there may be some events pending -> discard them
-									InnerTask.ProcessingEventWaitHandle.Set();
+									InnerTask.MarkCurrentEventAsProcessed();
 									taskFinished = true;
 								}
 							}
