@@ -16,7 +16,7 @@ namespace Koneko.P2P.Chord {
 	}
 
 	[DataContract]
-	public class NodeDescriptor : IEquatable<NodeDescriptor>, IHashFunctionArgument {
+	public class NodeDescriptor : IEquatable<NodeDescriptor>, IComparable, IComparable<NodeDescriptor>, IHashFunctionArgument {
 		[DataMember]
 		private ulong _Id;
 		[DataMember]
@@ -58,11 +58,11 @@ namespace Koneko.P2P.Chord {
 		}
 
 		public override int GetHashCode() {
-			return Id.GetHashCode() ^ IpAddress.GetHashCode() ^ Port.GetHashCode() ^ RingLevel.GetHashCode();
+			return Id.GetHashCode() ^ RingLevel.GetHashCode();
 		}
 
 		public bool Equals(NodeDescriptor other) {
-			return Id.Equals(other.Id) && Port.Equals(other.Port) && IpAddress.Equals(other.IpAddress) && RingLevel.Equals(other.RingLevel);
+			return Id.Equals(other.Id) && RingLevel.Equals(other.RingLevel);
 		}
 
 		public byte[] ToHashFunctionArgument() {
@@ -75,6 +75,14 @@ namespace Koneko.P2P.Chord {
 
 		public string ToShortString() {
 			return Id + ", " + RingLevel;
+		}
+
+		public int CompareTo(object obj) {
+			return CompareTo((NodeDescriptor)obj);
+		}
+
+		public int CompareTo(NodeDescriptor other) {
+			return this.Equals(other) ? 0 : 1;
 		}
 	}
 }

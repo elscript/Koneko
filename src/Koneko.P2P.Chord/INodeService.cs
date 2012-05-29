@@ -20,5 +20,7 @@ namespace Koneko.P2P.Chord {
 		void FixSeedNode(NodeDescriptor joinedNode);
 		[OperationContract]
 		NodeDescriptor[] GetNodeSuccessorCache();
+		[OperationContract]
+		void Ping();
 	}
 }

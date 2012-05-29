@@ -17,44 +17,37 @@ namespace Koneko.P2P.Chord {
 	public class LocalInstance : INodeService, IDisposable {
 		private static ILog Log = LogManager.GetLogger(typeof(LocalInstance));
 
-		private IList<CancellableTask> BackgroundTasks { get; set; }
-
 		public IProvider<byte[], ulong> ObjectHashKeyPrv { get; set; }
+		public LocalInstanceMaintenanceService MaintenanceService { get; set; }
+		public CommunicationManager<INodeService> CommunicationManager { get; set; }
+		public RemoteServicesCache<INodeService> NodeServices { get; set; }
+
 		public int RingLength { get; private set; }
 		public LocalNodeDescriptor LocalNode { get; private set; }
 
-		private RemoteServicesCache<INodeService> _NodeServices;
-		private RemoteServicesCache<INodeService> NodeServices {
-			get {
-				if (_NodeServices == null) {
-					_NodeServices = new RemoteServicesCache<INodeService> { 
-										ServiceUrlPart = CommunicationManager.ServiceUrlPart,
-										LocalService = this,
-										LocalServiceNode = LocalNode.Endpoint
-									};
-				}
-				return _NodeServices;
-			}
-		}
+		private LocalInstanceTask InnerTask { get; set; }
 
-		private CommunicationManager<INodeService> _CommunicationManager;
-		private CommunicationManager<INodeService> CommunicationManager {
-			get {
-				if (_CommunicationManager == null) {
-					_CommunicationManager = new CommunicationManager<INodeService> {
-												LocalService = this,
-												LocalServiceNode = LocalNode.Endpoint
-											};
-				}
-				return _CommunicationManager;
-			}
+		public ulong Id {
+			get { return LocalNode.Id; }
 		}
 
 		public LocalInstance(int ringLength, int ringLevel, int localPort, IProvider<byte[], ulong> hashKeyPrv) {
 			RingLength = ringLength;
-			BackgroundTasks = new List<CancellableTask>();
 			ObjectHashKeyPrv = hashKeyPrv;
 			LocalNode = new LocalNodeDescriptor(new NodeDescriptor(NetworkHelper.GetLocalIpAddress(), localPort, ringLevel, hashKeyPrv), ringLength);
+
+			CommunicationManager = new CommunicationManager<INodeService> {
+										LocalService = this,
+										LocalServiceNode = LocalNode.Endpoint
+									};
+
+			NodeServices = new RemoteServicesCache<INodeService> { 
+									ServiceUrlPart = CommunicationManager.ServiceUrlPart,
+									LocalService = this,
+									LocalServiceNode = LocalNode.Endpoint
+								};
+
+			MaintenanceService = new LocalInstanceMaintenanceService(this) { NodeServices = NodeServices };
 		}
 
 		public void Join(NodeDescriptor knownNode = null) {
@@ -123,192 +116,97 @@ namespace Koneko.P2P.Chord {
 				Log.Write(LogEvent.Info, "Started new ring with node {0}, ring length {1}", LocalNode.Endpoint, RingLength);
 			}
 
-			// run background threads
-			StartBackgroundTasks();
-
 			LocalNode.State = NodeState.Connected;
+
+			// if all is ok, start instance thread
+			StartInnerTask();
+		}
+
+		private void StartInnerTask() {
+			// if we are rejoining, then the task is already running, so we only need to resume it
+			if (InnerTask.ActualTask.Status == TaskStatus.Running) {
+				// allow to resume maintenance
+				MaintenanceService.Status = MaintenanceStatus.WaitingForStart;
+			} else {
+				var factory = new TaskFactory(TaskCreationOptions.LongRunning | TaskCreationOptions.AttachedToParent, TaskContinuationOptions.None);
+
+				InnerTask = new LocalInstanceTask();
+				InnerTask.ActualTask 
+					= factory.StartNew(
+						() => {
+							var taskFinished = false;
+							while (!taskFinished) {
+								// run background threads
+								if (MaintenanceService.Status == MaintenanceStatus.WaitingForStart) {
+									MaintenanceService.Start();
+								}
+
+								// wait until event is received
+								InnerTask.WaitingForEventWaitHandle.Wait();
+
+								if (InnerTask.CurrentEvent == LocalInstanceEvent.RejoinRequested) {
+									if (LocalNode.InitEndpoint == null) {
+										Log.Write(LogEvent.Warn, "Not possible to rejoin for node {0} because the bootstrapper node is empty or not accessible, leaving the network", LocalNode.Endpoint);
+										// cannot rejoin - simply request leaving
+										InnerTask.SetCurrentEvent(LocalInstanceEvent.LeaveRequested);
+									} else {
+										// try to rejoin using cached bootstraper node
+										var localInitEndpoint = LocalNode.InitEndpoint;
+										Log.Write(LogEvent.Info, "Trying to rejoin for node {0}, bootstrapper node {1}", LocalNode.Endpoint, localInitEndpoint);
+
+										Leave();
+										Join(localInitEndpoint);
+
+										if (LocalNode.State != NodeState.Connected) {
+											// still couldn't join the network for some reason - request leaving
+											InnerTask.SetCurrentEvent(LocalInstanceEvent.LeaveRequested);
+										} else {
+											InnerTask.MarkCurrentEventAsProcessed();
+										}
+									}
+								} else if (InnerTask.CurrentEvent == LocalInstanceEvent.LeaveRequested || InnerTask.CurrentEvent == LocalInstanceEvent.ExitRequested) {
+									Leave();
+									// there may be some events pending -> discard them
+									InnerTask.ProcessingEventWaitHandle.Set();
+									taskFinished = true;
+								}
+							}
+						}
+					);
+			}
+		}
+
+		// method for the instance thread signaling
+		public void SignalEvent(LocalInstanceEvent e) {
+			// wait until current event is being processed
+			InnerTask.ProcessingEventWaitHandle.Wait();
+			// proceed
+			InnerTask.SetCurrentEvent(e);
 		}
 
 		// TODO: pass LeaveReason here (and display it)
 		public void Leave() {
 			Log.Write(LogEvent.Info, "Leaving the network for node {0}", LocalNode.Endpoint);
-			foreach (var t in BackgroundTasks) {
-				if (t.Task.Status == TaskStatus.Running) {
-					t.TokenSource.Cancel();
-					t.Task.Wait();
-				}
-			}
-			NodeServices.Clear();
+
+			// stop stabilization threads
+			MaintenanceService.Stop();
+			
+			// stop network communication server
 			CommunicationManager.StopCommunication();
+
+			// cleanup
+			NodeServices.Clear();
 			LocalNode.Reset();
+
+			// mark as disconnected
 			LocalNode.State = NodeState.Disconnected;
+
 			Log.Write(LogEvent.Info, "Left the network for node {0}", LocalNode.Endpoint);
-		}
-
-		private void StartBackgroundTasks() {
-			var stabilizeTaskCts = new CancellationTokenSource();
-			var stabilizeTask = Task.Factory.StartNew(
-					() => {
-						while (!stabilizeTaskCts.IsCancellationRequested) {
-							Stabilize();
-							Thread.Sleep(3000);
-						}
-					},
-					stabilizeTaskCts.Token
-				);
-			BackgroundTasks.Add(new CancellableTask { Task = stabilizeTask, TokenSource = stabilizeTaskCts});
-
-			var stabilizeSuccTaskCts = new CancellationTokenSource();
-			var stabilizeSuccTask = Task.Factory.StartNew(
-					() => {
-						while (!stabilizeSuccTaskCts.IsCancellationRequested) {
-							StabilizeSuccessorsCache();
-							Thread.Sleep(3000);
-						}
-					},
-					stabilizeSuccTaskCts.Token
-				);
-			BackgroundTasks.Add(new CancellableTask { Task = stabilizeSuccTask, TokenSource = stabilizeSuccTaskCts});
-
-			var fixFingersTaskCts = new CancellationTokenSource();
-			var fixFingersTask = Task.Factory.StartNew(
-					() => {
-						var fingerRowIdxToFix = 0;
-						while (!fixFingersTaskCts.IsCancellationRequested) {
-							FixFingers(fingerRowIdxToFix);
-							fingerRowIdxToFix = fingerRowIdxToFix == RingLength - 1 ? 0 : fingerRowIdxToFix + 1;
-							Thread.Sleep(3000);
-						}
-					},
-					fixFingersTaskCts.Token
-				);
-			BackgroundTasks.Add(new CancellableTask { Task = fixFingersTask, TokenSource = fixFingersTaskCts});
 		}
 
 		public NodeDescriptor FindResponsibleNodeForValue(IHashFunctionArgument val) {
 			var objKey = ObjectHashKeyPrv.Provide(val.ToHashFunctionArgument());
 			return FindSuccessorForId(objKey);
-		}
-
-		private void Stabilize() {
-			Log.Write(LogEvent.Debug, "Calling stabilize for node {0}", LocalNode.Endpoint);
-			var successorNodeSrv = NodeServices.GetRemoteNodeService(LocalNode.Successor);
-
-			NodeDescriptor succPredecessor = null;
-			try {
-				succPredecessor = successorNodeSrv.Service.GetNodePredecessor();
-			} catch (Exception ex) {
-				if (successorNodeSrv.IsUnavailable) {
-					Log.Write(
-						LogEvent.Warn, 
-						"Cannot perform stabilization because service for node {0} successor ({1}) is unavailable, trying to reassign first available cached successor as successor. Error details: \r\n {2}", 
-						LocalNode.Endpoint, 
-						LocalNode.Successor,
-						ex.ToString()
-					);
-					SetSuccessorFromCache();
-					return;
-				} else {
-					throw;
-				}
-			}
-
-			if (succPredecessor != null) {
-				// include right?
-				if (TopologyHelper.IsInCircularInterval(succPredecessor.Id, LocalNode.Id, LocalNode.Successor.Id)) {
-					Log.Write(LogEvent.Debug, "Successor for node {0} changed from {1} to {2} during stabilization", LocalNode.Endpoint, LocalNode.Successor, succPredecessor);
-					LocalNode.Successor = succPredecessor;
-
-					// our successor can be a different node now, refreshing it's service
-					successorNodeSrv = NodeServices.GetRemoteNodeService(LocalNode.Successor);
-				}
-			}
-
-			try {
-				successorNodeSrv.Service.FixPredecessor(LocalNode.Endpoint);
-				Log.Write(LogEvent.Debug, "Finished stabilizing for node {0}", LocalNode.Endpoint);
-			} catch (Exception ex) {
-				if (successorNodeSrv.IsUnavailable) {
-					Log.Write(
-						LogEvent.Warn, 
-						"Cannot perform stabilization because service for node {0} successor ({1}) is unavailable, trying to reassign first available cached successor as successor. Error details: \r\n {2}", 
-						LocalNode.Endpoint, 
-						LocalNode.Successor,
-						ex.ToString()
-					);
-					SetSuccessorFromCache();
-					return;
-				} else {
-					throw;
-				}
-			}
-		}
-
-		private void StabilizeSuccessorsCache() {
-			Log.Write(LogEvent.Debug, "Calling stabilize successor cache for node {0}", LocalNode.Endpoint);
-
-			var successorNodeSrv = NodeServices.GetRemoteNodeService(LocalNode.Successor);
-			NodeDescriptor successorNodeSuccessor = null;
-			NodeDescriptor[] successorNodeSuccessorCache = null;
-
-			try {
-				successorNodeSuccessor = successorNodeSrv.Service.GetNodeSuccessor();
-			} catch (Exception ex) {
-				if (successorNodeSrv.IsUnavailable) {
-					Log.Write(
-						LogEvent.Warn, 
-						"Cannot perform stabilize successor cache because service for node {0} successor ({1}) is unavailable, trying to reassign first available cached successor as successor. Error details: \r\n {2}", 
-						LocalNode.Endpoint, 
-						LocalNode.Successor,
-						ex.ToString()
-					);
-					SetSuccessorFromCache();
-					return;
-				} else {
-					throw;
-				}
-			}
-
-			try {
-				successorNodeSuccessorCache = successorNodeSrv.Service.GetNodeSuccessorCache();
-			} catch (Exception ex) {
-				if (successorNodeSrv.IsUnavailable) {
-					Log.Write(
-						LogEvent.Warn, 
-						"Cannot perform stabilize successor cache because service for node {0} successor ({1}) is unavailable, trying to reassign first available cached successor as successor. Error details: \r\n {2}", 
-						LocalNode.Endpoint, 
-						LocalNode.Successor,
-						ex.ToString()
-					);
-					SetSuccessorFromCache();
-					return;
-				} else {
-					throw;
-				}
-			}
-			
-			if (successorNodeSuccessor != null || successorNodeSuccessorCache != null) {
-				for (var i = 0; i < LocalNode.SuccessorCacheSize; ++i) {
-					if (i == 0) {
-						if (successorNodeSuccessor != null) {
-							LocalNode.SuccessorCache[i] = successorNodeSuccessor;
-						}
-					} else {
-						if (successorNodeSuccessorCache != null && successorNodeSuccessorCache[i-1] != null) {
-							LocalNode.SuccessorCache[i] = successorNodeSuccessorCache[i-1];
-						}
-					}
-				}
-				Log.Write(LogEvent.Debug, "Finished stabilizing successor cache for node {0}", LocalNode.Endpoint);
-			}
-		}
-
-		public void FixPredecessor(NodeDescriptor candidateNode) {
-			Log.Write(LogEvent.Debug, "Calling fix predecessor for node {0} with candidate {1}", LocalNode.Endpoint, candidateNode);
-			if (LocalNode.Predecessor == null || LocalNode.Predecessor.Equals(LocalNode.Endpoint) || TopologyHelper.IsInCircularInterval(candidateNode.Id, LocalNode.Predecessor.Id, LocalNode.Id)) {
-				LocalNode.Predecessor = candidateNode;
-				Log.Write(LogEvent.Debug, "Fixed predecessor for node {0} with candidate {1}", LocalNode.Endpoint, candidateNode);
-			}
 		}
 
 		// special method that checks if the seed node succ/pred are ok
@@ -317,21 +215,6 @@ namespace Koneko.P2P.Chord {
 				 // its not correct because there is at least one more node in the network (which called this method)
 				LocalNode.Successor = joinedNode;
 			}
-		}
-
-		private void FixFingers(int? fingerRowIdx = null) {
-			var actualFingerRowIdx = fingerRowIdx.HasValue 
-										? (fingerRowIdx.Value > RingLength - 1 
-												? 0
-												: fingerRowIdx.Value 
-											)
-										: LocalNode.GetRandomFingerTableIndex();
-			Log.Write(LogEvent.Debug, "Calling fix fingers for node {0}, finger row position {1}", LocalNode.Endpoint, actualFingerRowIdx);
-			
-			var successorForFinger = FindSuccessorForId(LocalNode.Fingers[actualFingerRowIdx].Key);
-
-			LocalNode.Fingers[actualFingerRowIdx] = new KeyValuePair<ulong, NodeDescriptor>(TopologyHelper.GetFingerTableKey(LocalNode.Id, actualFingerRowIdx, RingLength), successorForFinger);
-			Log.Write(LogEvent.Debug, "Finished fixing fingers for node {0}, finger row position {1}", LocalNode.Endpoint, actualFingerRowIdx);
 		}
 
 		public NodeDescriptor FindSuccessorForId(ulong id) {
@@ -365,6 +248,14 @@ namespace Koneko.P2P.Chord {
 				} else {
 					throw;
 				}
+			}
+		}
+
+		public void FixPredecessor(NodeDescriptor candidateNode) {
+			Log.Write(LogEvent.Debug, "Calling fix predecessor for node {0} with candidate {1}", LocalNode.Endpoint, candidateNode);
+			if (LocalNode.Predecessor == null || LocalNode.Predecessor.Equals(LocalNode.Endpoint) || TopologyHelper.IsInCircularInterval(candidateNode.Id, LocalNode.Predecessor.Id, LocalNode.Id)) {
+				LocalNode.Predecessor = candidateNode;
+				Log.Write(LogEvent.Debug, "Fixed predecessor for node {0} with candidate {1}", LocalNode.Endpoint, candidateNode);
 			}
 		}
 
@@ -411,37 +302,6 @@ namespace Koneko.P2P.Chord {
 			return LocalNode.Endpoint;
 		}
 
-		private void SetSuccessorFromCache() {
-			foreach (var succ in LocalNode.SuccessorCache) {
-				if (!succ.Equals(LocalNode.Endpoint)) {
-					LocalNode.Successor = succ;
-					return;
-				}
-			}
-			// there's no cached nodes adequate for becoming temp successor, we need to try rejoining
-			Rejoin();
-		}
-
-		// TODO: pass RejoinReason here (and display it)
-		private void Rejoin() { 
-			var localInitEndpoint = LocalNode.InitEndpoint;
-			if (localInitEndpoint != null) {
-				Log.Write(LogEvent.Info, "Trying to rejoin for node {0}, bootstrapper node {1}", LocalNode.Endpoint, localInitEndpoint);
-				// leaving the network but preserve the capability to rejoin
-				Leave();
-
-				Join(localInitEndpoint);
-			}
-
-			// means that the cached initial node is unaccessiable
-			if (localInitEndpoint == null || LocalNode.State != NodeState.Connected) {
-				Log.Write(LogEvent.Warn, "Not possible to rejoin for node {0} because the bootstrapper node is empty or not accessible, leaving the network", LocalNode.Endpoint);
-
-				// leave the network completely (manual rejoin is possible)
-				Leave();	
-			}
-		}
-
 		public NodeDescriptor GetNodePredecessor() {
 			return LocalNode.Predecessor;
 		}
@@ -463,9 +323,45 @@ namespace Koneko.P2P.Chord {
 			}
 		}
 
-		private class CancellableTask {
-			public Task Task { get; set; }
-			public CancellationTokenSource TokenSource { get; set; }
+		public void Ping() {
+			// do nothing
 		}
+	}
+
+	public class LocalInstanceTask {
+		public Task ActualTask { get; set; }
+		public ManualResetEventSlim WaitingForEventWaitHandle { get; set; }
+		public ManualResetEventSlim ProcessingEventWaitHandle { get; set; }
+		public LocalInstanceEvent CurrentEvent { get; set; }
+
+		// TODO: in future it can be implemented as queue of events instead of 'receive event - process - wait for another' model
+
+		public LocalInstanceTask() {
+			WaitingForEventWaitHandle = new ManualResetEventSlim();
+			// this handle is signaled initially, because we need to be able to receive events
+			ProcessingEventWaitHandle = new ManualResetEventSlim(true);
+			// no events initially
+			CurrentEvent = LocalInstanceEvent.None;
+		}
+
+		public void SetCurrentEvent(LocalInstanceEvent e) {
+			CurrentEvent = e;
+			// start processing events
+			WaitingForEventWaitHandle.Set();
+			// do not receive event until processed
+			ProcessingEventWaitHandle.Reset();
+		}
+
+		public void MarkCurrentEventAsProcessed() {
+			CurrentEvent = LocalInstanceEvent.None;
+			// start waiting for new event
+			WaitingForEventWaitHandle.Reset();
+			// allow new events
+			ProcessingEventWaitHandle.Set();
+		}
+	}
+
+	public enum LocalInstanceEvent {
+		None, LeaveRequested, ExitRequested, RejoinRequested
 	}
 }

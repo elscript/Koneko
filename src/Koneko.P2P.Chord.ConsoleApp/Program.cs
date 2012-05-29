@@ -22,7 +22,7 @@ using Koneko.P2P.Chord.Storage;
 namespace Koneko.P2P.Chord.ConsoleApp {
 	public class Program {
 		private static ILog Log = LogManager.GetLogger(typeof(Program));
-
+		
 		[STAThread]
 		public static void Main(string[] args) {
 			try {
@@ -68,23 +68,25 @@ namespace Koneko.P2P.Chord.ConsoleApp {
 		private static void ProcessCommands(IList<LocalInstance> localInstances) {
 			CancellationTokenSource showLocalInfoTs = null;
 			while (true) {
-				var cmd = Console.ReadLine();
+				var cmd = Console.ReadLine(); 
 				if (cmd.StartsWith("join")) {
 					var cmdParts = cmd.Split(new[] { " " }, StringSplitOptions.RemoveEmptyEntries);
+					var taskFactory = new TaskFactory(TaskCreationOptions.LongRunning | TaskCreationOptions.AttachedToParent, TaskContinuationOptions.None);
 					if (cmdParts.Length > 1) {
 						var nodeInfo = cmdParts[1].Split(new[] { ":" }, StringSplitOptions.RemoveEmptyEntries);
 						foreach (var inst in localInstances) {
+							// TODO: it is possible to wrap each join in a different thread and then wait on all threads so all joins will perform simultaneously
 							inst.Join(
-								new NodeDescriptor(
-									ipAddress: nodeInfo[0], 
-									port: Convert.ToInt32(nodeInfo[1]), 
-									ringLevel: inst.LocalNode.Endpoint.RingLevel, 
-									hashKeyPrv: inst.ObjectHashKeyPrv
-								)
-							);
+									new NodeDescriptor(
+										ipAddress: nodeInfo[0], 
+										port: Convert.ToInt32(nodeInfo[1]), 
+										ringLevel: inst.LocalNode.Endpoint.RingLevel, 
+										hashKeyPrv: inst.ObjectHashKeyPrv
+							));
 						}
 					} else {
 						foreach (var inst in localInstances) {
+							// TODO: it is possible to wrap each join in a different thread and then wait on all threads so all joins will perform simultaneously
 							inst.Join();
 						}
 					}
@@ -96,11 +98,16 @@ namespace Koneko.P2P.Chord.ConsoleApp {
 					StopShowLocalInfo(showLocalInfoTs);
 				} else if (cmd == "leave") {
 					StopShowLocalInfo(showLocalInfoTs);
+
 					foreach (var inst in localInstances) {
-						inst.Leave();
+						inst.SignalEvent(LocalInstanceEvent.LeaveRequested);
 					}
 				} else if (cmd == "exit") {
 					StopShowLocalInfo(showLocalInfoTs);
+
+					foreach (var inst in localInstances) {
+						inst.SignalEvent(LocalInstanceEvent.ExitRequested);
+					}
 					break;
 				} else {
 					Console.WriteLine("join <ipaddress>:<port> : Join the network with known node \r\n info: Show info about local node \r\n join : Create new network \r\n leave: Leave the network \r\n exit : Exit the application");
