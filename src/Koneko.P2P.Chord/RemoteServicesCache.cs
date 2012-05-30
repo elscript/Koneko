@@ -22,7 +22,7 @@ namespace Koneko.P2P.Chord {
 		public RemoteServicesCacheEntry<ServiceT> GetRemoteNodeService(NodeDescriptor node) {
 			// return local service for local nodes
 			if (node.Equals(LocalServiceNode)) {
-				return new RemoteServicesCacheEntry<ServiceT> { Service = LocalService };
+				return new RemoteServicesCacheEntry<ServiceT> { Service = LocalService, IsLocalService = true };
 			}
 			if (!Cache.ContainsKey(node)) {
                 var srvFactory = new ChannelFactory<ServiceT>(
@@ -51,11 +51,22 @@ namespace Koneko.P2P.Chord {
 
 	public class RemoteServicesCacheEntry<ServiceT> {
 		public ServiceT Service { get; set; }
+		public bool IsLocalService { get; set; }
 		public bool IsUnavailable { 
-			get { return ((ICommunicationObject)Service).State == CommunicationState.Faulted 
+			get { 
+				// local instance is always available
+				if (IsLocalService) {
+					return false;
+				} else {
+					return ((ICommunicationObject)Service).State == CommunicationState.Faulted 
 						|| ((ICommunicationObject)Service).State == CommunicationState.Closed 
 						|| ((ICommunicationObject)Service).State == CommunicationState.Closing;
+				}
 			}
+		}
+
+		public RemoteServicesCacheEntry() {
+			IsLocalService = false;
 		}
 	}
 }

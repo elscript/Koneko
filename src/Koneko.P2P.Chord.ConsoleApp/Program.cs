@@ -102,11 +102,19 @@ namespace Koneko.P2P.Chord.ConsoleApp {
 					foreach (var inst in localInstances) {
 						inst.SignalEvent(LocalInstanceEvent.LeaveRequested);
 					}
+					// wait until all instance insternal threads are done
+					foreach (var inst in localInstances) {
+						inst.WaitUntilCurrentEventProcessed();
+					}
 				} else if (cmd == "exit") {
 					StopShowLocalInfo(showLocalInfoTs);
 
 					foreach (var inst in localInstances) {
 						inst.SignalEvent(LocalInstanceEvent.ExitRequested);
+					}
+					// wait until all instance insternal threads are done
+					foreach (var inst in localInstances) {
+						inst.WaitUntilCurrentEventProcessed();
 					}
 					break;
 				} else {

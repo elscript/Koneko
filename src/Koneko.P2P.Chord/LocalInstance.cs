@@ -48,6 +48,8 @@ namespace Koneko.P2P.Chord {
 								};
 
 			MaintenanceService = new LocalInstanceMaintenanceService(this) { NodeServices = NodeServices };
+
+			StartInnerTask();
 		}
 
 		public void Join(NodeDescriptor knownNode = null) {
@@ -118,62 +120,67 @@ namespace Koneko.P2P.Chord {
 
 			LocalNode.State = NodeState.Connected;
 
-			// if all is ok, start instance thread
-			StartInnerTask();
+			// notify that we have successfully joined
+			InnerTask.SetCurrentEvent(LocalInstanceEvent.JoinedSuccessfully);
 		}
 
 		private void StartInnerTask() {
-			// if we are rejoining, then the task is already running, so we only need to resume it
-			if (InnerTask.ActualTask.Status == TaskStatus.Running) {
-				// allow to resume maintenance
-				MaintenanceService.Status = MaintenanceStatus.WaitingForStart;
-			} else {
-				var factory = new TaskFactory(TaskCreationOptions.LongRunning | TaskCreationOptions.AttachedToParent, TaskContinuationOptions.None);
+			var factory = new TaskFactory(TaskCreationOptions.LongRunning | TaskCreationOptions.AttachedToParent, TaskContinuationOptions.None);
 
-				InnerTask = new LocalInstanceTask();
-				InnerTask.ActualTask 
-					= factory.StartNew(
-						() => {
-							var taskFinished = false;
-							while (!taskFinished) {
-								// run background threads
-								if (MaintenanceService.Status == MaintenanceStatus.WaitingForStart) {
-									MaintenanceService.Start();
-								}
+			InnerTask = new LocalInstanceTask();
+			InnerTask.ActualTask 
+				= factory.StartNew(
+					() => {
+						var taskFinished = false;
+						while (!taskFinished) {
+							// run background threads
+							if (MaintenanceService.Status == MaintenanceStatus.WaitingForStart) {
+								MaintenanceService.Start();
+							}
 
-								// wait until event is received
-								InnerTask.WaitingForEventWaitHandle.Wait();
+							// wait until event is received
+							InnerTask.WaitingForEventWaitHandle.Wait();
 
-								if (InnerTask.CurrentEvent == LocalInstanceEvent.RejoinRequested) {
-									if (LocalNode.InitEndpoint == null) {
-										Log.Write(LogEvent.Warn, "Not possible to rejoin for node {0} because the bootstrapper node is empty or not accessible, leaving the network", LocalNode.Endpoint);
-										// cannot rejoin - simply request leaving
+							Log.Write(LogEvent.Debug, "Processing event {0} at node {1}", InnerTask.CurrentEvent, LocalNode.Endpoint);
+
+							if (InnerTask.CurrentEvent == LocalInstanceEvent.JoinedSuccessfully) {
+								// allow to resume maintenance
+								MaintenanceService.Status = MaintenanceStatus.WaitingForStart;
+								// and simply proceed
+								InnerTask.MarkCurrentEventAsProcessed();
+							} else if (InnerTask.CurrentEvent == LocalInstanceEvent.RejoinRequested) {
+								if (LocalNode.InitEndpoint == null) {
+									Log.Write(LogEvent.Warn, "Not possible to rejoin for node {0} because the bootstrapper node is empty or not accessible, leaving the network", LocalNode.Endpoint);
+									// cannot rejoin - simply request leaving
+									InnerTask.SetCurrentEvent(LocalInstanceEvent.LeaveRequested);
+								} else {
+									// try to rejoin using cached bootstraper node
+									var localInitEndpoint = LocalNode.InitEndpoint;
+									Log.Write(LogEvent.Info, "Trying to rejoin for node {0}, bootstrapper node {1}", LocalNode.Endpoint, localInitEndpoint);
+
+									Leave();
+									Join(localInitEndpoint);
+
+									if (LocalNode.State != NodeState.Connected) {
+										// still couldn't join the network for some reason - request leaving
 										InnerTask.SetCurrentEvent(LocalInstanceEvent.LeaveRequested);
 									} else {
-										// try to rejoin using cached bootstraper node
-										var localInitEndpoint = LocalNode.InitEndpoint;
-										Log.Write(LogEvent.Info, "Trying to rejoin for node {0}, bootstrapper node {1}", LocalNode.Endpoint, localInitEndpoint);
-
-										Leave();
-										Join(localInitEndpoint);
-
-										if (LocalNode.State != NodeState.Connected) {
-											// still couldn't join the network for some reason - request leaving
-											InnerTask.SetCurrentEvent(LocalInstanceEvent.LeaveRequested);
-										} else {
-											InnerTask.MarkCurrentEventAsProcessed();
-										}
+										InnerTask.MarkCurrentEventAsProcessed();
 									}
-								} else if (InnerTask.CurrentEvent == LocalInstanceEvent.LeaveRequested || InnerTask.CurrentEvent == LocalInstanceEvent.ExitRequested) {
-									Leave();
-									// there may be some events pending -> discard them
-									InnerTask.MarkCurrentEventAsProcessed();
+								}
+							} else if (InnerTask.CurrentEvent == LocalInstanceEvent.LeaveRequested || InnerTask.CurrentEvent == LocalInstanceEvent.ExitRequested) {
+								Leave();
+								// there may be some events pending -> discard them
+								InnerTask.MarkCurrentEventAsProcessed();
+								// if it was exit -> finish this thread
+								if (InnerTask.CurrentEvent == LocalInstanceEvent.ExitRequested) {
 									taskFinished = true;
 								}
 							}
 						}
-					);
-			}
+					}
+				);
+			Log.Write(LogEvent.Debug, "Started listening for events at node {0}", LocalNode.Endpoint);
 		}
 
 		// method for the instance thread signaling
@@ -181,11 +188,16 @@ namespace Koneko.P2P.Chord {
 			// wait until current event is being processed
 			InnerTask.ProcessingEventWaitHandle.Wait();
 			// proceed
+			Log.Write(LogEvent.Debug, "Received event {0} at node {1}", e, LocalNode.Endpoint);
 			InnerTask.SetCurrentEvent(e);
 		}
 
-		// TODO: pass LeaveReason here (and display it)
-		public void Leave() {
+		public void WaitUntilCurrentEventProcessed() {
+			// wait until current event is being processed
+			InnerTask.ProcessingEventWaitHandle.Wait();
+		}
+
+		private void Leave() {
 			Log.Write(LogEvent.Info, "Leaving the network for node {0}", LocalNode.Endpoint);
 
 			// stop stabilization threads
@@ -211,9 +223,11 @@ namespace Koneko.P2P.Chord {
 
 		// special method that checks if the seed node succ/pred are ok
 		public void FixSeedNode(NodeDescriptor joinedNode) {
-			if (LocalNode.Successor.Equals(LocalNode.Endpoint)) {
-				 // its not correct because there is at least one more node in the network (which called this method)
-				LocalNode.Successor = joinedNode;
+			lock (LocalNode.SuccessorLockObject) {
+				if (LocalNode.Successor.Equals(LocalNode.Endpoint)) {
+					 // its not correct because there is at least one more node in the network (which called this method)
+					LocalNode.Successor = joinedNode;
+				}
 			}
 		}
 
@@ -253,9 +267,21 @@ namespace Koneko.P2P.Chord {
 
 		public void FixPredecessor(NodeDescriptor candidateNode) {
 			Log.Write(LogEvent.Debug, "Calling fix predecessor for node {0} with candidate {1}", LocalNode.Endpoint, candidateNode);
-			if (LocalNode.Predecessor == null || LocalNode.Predecessor.Equals(LocalNode.Endpoint) || TopologyHelper.IsInCircularInterval(candidateNode.Id, LocalNode.Predecessor.Id, LocalNode.Id)) {
-				LocalNode.Predecessor = candidateNode;
-				Log.Write(LogEvent.Debug, "Fixed predecessor for node {0} with candidate {1}", LocalNode.Endpoint, candidateNode);
+
+			// ensure that we have exclusive access to predecessor node
+			// not using 'lock' shortcut here because predecessor can be null
+			bool predecessorLockTaken = false;
+			try {
+				Monitor.Enter(LocalNode.PredecessorLockObject, ref predecessorLockTaken);
+
+				if (LocalNode.Predecessor == null || LocalNode.Predecessor.Equals(LocalNode.Endpoint) || TopologyHelper.IsInCircularInterval(candidateNode.Id, LocalNode.Predecessor.Id, LocalNode.Id)) {
+					LocalNode.Predecessor = candidateNode;
+					Log.Write(LogEvent.Debug, "Fixed predecessor for node {0} with candidate {1}", LocalNode.Endpoint, candidateNode);
+				}
+			} finally {
+				if (predecessorLockTaken) {
+					Monitor.Exit(LocalNode.PredecessorLockObject);
+				}
 			}
 		}
 
@@ -326,42 +352,42 @@ namespace Koneko.P2P.Chord {
 		public void Ping() {
 			// do nothing
 		}
-	}
 
-	public class LocalInstanceTask {
-		public Task ActualTask { get; set; }
-		public ManualResetEventSlim WaitingForEventWaitHandle { get; set; }
-		public ManualResetEventSlim ProcessingEventWaitHandle { get; set; }
-		public LocalInstanceEvent CurrentEvent { get; set; }
+		private class LocalInstanceTask {
+			public Task ActualTask { get; set; }
+			public ManualResetEventSlim WaitingForEventWaitHandle { get; set; }
+			public ManualResetEventSlim ProcessingEventWaitHandle { get; set; }
+			public LocalInstanceEvent CurrentEvent { get; set; }
 
-		// TODO: in future it can be implemented as queue of events instead of 'receive event - process - wait for another' model
+			// TODO: in future it can be implemented as queue of events instead of 'receive event - process - wait for another' model
 
-		public LocalInstanceTask() {
-			WaitingForEventWaitHandle = new ManualResetEventSlim();
-			// this handle is signaled initially, because we need to be able to receive events
-			ProcessingEventWaitHandle = new ManualResetEventSlim(true);
-			// no events initially
-			CurrentEvent = LocalInstanceEvent.None;
-		}
+			public LocalInstanceTask() {
+				WaitingForEventWaitHandle = new ManualResetEventSlim();
+				// this handle is signaled initially, because we need to be able to receive events
+				ProcessingEventWaitHandle = new ManualResetEventSlim(true);
+				// no events initially
+				CurrentEvent = LocalInstanceEvent.None;
+			}
 
-		public void SetCurrentEvent(LocalInstanceEvent e) {
-			CurrentEvent = e;
-			// start processing events
-			WaitingForEventWaitHandle.Set();
-			// do not receive event until processed
-			ProcessingEventWaitHandle.Reset();
-		}
+			public void SetCurrentEvent(LocalInstanceEvent e) {
+				CurrentEvent = e;
+				// start processing events
+				WaitingForEventWaitHandle.Set();
+				// do not receive event until processed
+				ProcessingEventWaitHandle.Reset();
+			}
 
-		public void MarkCurrentEventAsProcessed() {
-			CurrentEvent = LocalInstanceEvent.None;
-			// start waiting for new event
-			WaitingForEventWaitHandle.Reset();
-			// allow new events
-			ProcessingEventWaitHandle.Set();
+			public void MarkCurrentEventAsProcessed() {
+				CurrentEvent = LocalInstanceEvent.None;
+				// start waiting for new event
+				WaitingForEventWaitHandle.Reset();
+				// allow new events
+				ProcessingEventWaitHandle.Set();
+			}
 		}
 	}
 
 	public enum LocalInstanceEvent {
-		None, LeaveRequested, ExitRequested, RejoinRequested
+		None, LeaveRequested, ExitRequested, RejoinRequested, JoinedSuccessfully
 	}
 }

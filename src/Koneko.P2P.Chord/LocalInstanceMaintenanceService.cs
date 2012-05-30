@@ -34,7 +34,8 @@ namespace Koneko.P2P.Chord {
 			StabilizeSuccessorCacheIdleTimeMs = 3000;
 			FixFingersIdleTimeMs = 3000;
 
-			Status = MaintenanceStatus.WaitingForStart;
+			// initally stopped
+			Status = MaintenanceStatus.Stopped;
 
 			RunningTasks = new List<Task>();
 			LocalInstance = l;
@@ -48,41 +49,23 @@ namespace Koneko.P2P.Chord {
 
 			var stabilizeTask = TaskFactory.StartNew(
 					() => {
+						var fingerRowIdxToFix = 0;
 						while (!Cancellation.IsCancellationRequested) {
-							var args = new BackgroundTaskArgs { IdleTimeMs = StabilizeIdleTimeMs };
-							Stabilize(args);
-							Thread.Sleep(args.IdleTimeMs);
+							var argsStab = new BackgroundTaskArgs { IdleTimeMs = StabilizeIdleTimeMs };
+							var argsStabSc = new BackgroundTaskArgs { IdleTimeMs = StabilizeSuccessorCacheIdleTimeMs };
+							var argsFf = new BackgroundTaskArgs { IdleTimeMs = FixFingersIdleTimeMs };
+
+							Stabilize(argsStab);
+							StabilizeSuccessorsCache(argsStabSc);
+							FixFingers(argsFf, fingerRowIdxToFix);
+
+							fingerRowIdxToFix = fingerRowIdxToFix == LocalInstance.RingLength - 1 ? 0 : fingerRowIdxToFix + 1;
+							Thread.Sleep(Math.Min(argsStab.IdleTimeMs, argsStabSc.IdleTimeMs));
 						}
 					},
 					Cancellation.Token
 				);
 			RunningTasks.Add(stabilizeTask);
-
-			var stabilizeSuccTask = TaskFactory.StartNew(
-					() => {
-						while (!Cancellation.IsCancellationRequested) {
-							var args = new BackgroundTaskArgs { IdleTimeMs = StabilizeIdleTimeMs };
-							StabilizeSuccessorsCache(args);
-							Thread.Sleep(args.IdleTimeMs);
-						}
-					},
-					Cancellation.Token
-				);
-			RunningTasks.Add(stabilizeSuccTask);
-
-			var fixFingersTask = TaskFactory.StartNew(
-					() => {
-						var fingerRowIdxToFix = 0;
-						while (!Cancellation.IsCancellationRequested) {
-							var args = new BackgroundTaskArgs { IdleTimeMs = StabilizeIdleTimeMs };
-							FixFingers(args, fingerRowIdxToFix);
-							fingerRowIdxToFix = fingerRowIdxToFix == LocalInstance.RingLength - 1 ? 0 : fingerRowIdxToFix + 1;
-							Thread.Sleep(args.IdleTimeMs);
-						}
-					},
-					Cancellation.Token
-				);
-			RunningTasks.Add(fixFingersTask);
 
 			Status = MaintenanceStatus.Started;
 		}
@@ -253,41 +236,45 @@ namespace Koneko.P2P.Chord {
 			Log.Write(LogEvent.Debug, "Calling fix fingers for node {0}, finger row position {1}", LocalNode.Endpoint, actualFingerRowIdx);
 			
 			var successorForFinger = LocalInstance.FindSuccessorForId(LocalNode.Fingers[actualFingerRowIdx].Key);
-
 			LocalNode.Fingers[actualFingerRowIdx] = new KeyValuePair<ulong, NodeDescriptor>(TopologyHelper.GetFingerTableKey(LocalNode.Id, actualFingerRowIdx, LocalInstance.RingLength), successorForFinger);
+
 			Log.Write(LogEvent.Debug, "Finished fixing fingers for node {0}, finger row position {1}", LocalNode.Endpoint, actualFingerRowIdx);
 		}
 
 		private bool SetSuccessorFromCache() {
 			NodeDescriptor lastSuccessfulEntry = null;
 			int checkedSuccCacheEntries = 0;
-			for (var i = 0; i < LocalNode.SuccessorCache.Length; ++i, ++checkedSuccCacheEntries) {
-				var currEntry = LocalNode.SuccessorCache[i];
-				if (!currEntry.Equals(LocalNode.Endpoint)) {
-					var currEntrySrv = NodeServices.GetRemoteNodeService(currEntry);
-					try {
-						currEntrySrv.Service.Ping();
-					} catch (Exception ex) {
-						// if remote service is no good -> proceed to the next successor
-						if (currEntrySrv.IsUnavailable) {
-							Log.Write(
-								LogEvent.Debug, 
-								"Trying to set successor {0} for node {1} from successor cache has failed, continuing to the next successor cache entry. Error details: \r\n {2}", 
-								currEntry,
-								LocalNode.Endpoint, 
-								ex
-							);
-							continue;
-						} else {
-							throw;
+
+			// no one must access successor because we are trying to fix it
+			lock (LocalNode.Successor) {
+				for (var i = 0; i < LocalNode.SuccessorCache.Length; ++i, ++checkedSuccCacheEntries) {
+					var currEntry = LocalNode.SuccessorCache[i];
+					if (!currEntry.Equals(LocalNode.Endpoint)) {
+						var currEntrySrv = NodeServices.GetRemoteNodeService(currEntry);
+						try {
+							currEntrySrv.Service.Ping();
+						} catch (Exception ex) {
+							// if remote service is no good -> proceed to the next successor
+							if (currEntrySrv.IsUnavailable) {
+								Log.Write(
+									LogEvent.Debug, 
+									"Trying to set successor {0} for node {1} from successor cache has failed, continuing to the next successor cache entry. Error details: \r\n {2}", 
+									currEntry,
+									LocalNode.Endpoint, 
+									ex
+								);
+								continue;
+							} else {
+								throw;
+							}
 						}
 					}
 				}
-			}
-			// if there were some good successor from the cache -> set it as successor
-			if (lastSuccessfulEntry != null) {
-				LocalNode.Successor = lastSuccessfulEntry;
-				return true;
+				// if there were some good successor from the cache -> set it as successor
+				if (lastSuccessfulEntry != null) {
+					LocalNode.Successor = lastSuccessfulEntry;
+					return true;
+				}
 			}
 
 			return false;

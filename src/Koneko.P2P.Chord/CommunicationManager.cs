@@ -30,10 +30,12 @@ namespace Koneko.P2P.Chord {
 		}
 
 		public void StopCommunication() {
-			if (ServiceHost.State != CommunicationState.Closed) {
-				ServiceHost.Close();
+			if (ServiceHost != null) {
+				if (ServiceHost.State != CommunicationState.Closed) {
+					ServiceHost.Close();
+				}
+				((IDisposable)ServiceHost).Dispose();
 			}
-			((IDisposable)ServiceHost).Dispose();
 		}
 
 		void IDisposable.Dispose() {

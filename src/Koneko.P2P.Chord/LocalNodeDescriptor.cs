@@ -15,6 +15,17 @@ namespace Koneko.P2P.Chord {
 
 		private readonly Random Rnd;
 
+		// synchronization 
+		private object _PredecessorLockObject = new object();
+		public object PredecessorLockObject {
+			get { return _PredecessorLockObject; }
+		}
+
+		private object _SuccessorLockObject = new object();
+		public object SuccessorLockObject {
+			get { return _SuccessorLockObject; }
+		}
+
 		private NodeDescriptor[] _SuccessorCache;
 		public NodeDescriptor[] SuccessorCache {
 			get {
