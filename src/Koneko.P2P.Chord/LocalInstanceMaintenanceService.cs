@@ -246,7 +246,7 @@ namespace Koneko.P2P.Chord {
 			int checkedSuccCacheEntries = 0;
 
 			// no one must access successor because we are trying to fix it
-			lock (LocalNode.Successor) {
+			lock (LocalNode.SuccessorLockObject) {
 				for (var i = 0; i < LocalNode.SuccessorCache.Length; ++i, ++checkedSuccCacheEntries) {
 					var currEntry = LocalNode.SuccessorCache[i];
 					if (!currEntry.Equals(LocalNode.Endpoint)) {

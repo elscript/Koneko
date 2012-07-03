@@ -218,7 +218,8 @@ namespace Koneko.P2P.Chord {
 
 		public NodeDescriptor FindResponsibleNodeForValue(IHashFunctionArgument val) {
 			var objKey = ObjectHashKeyPrv.Provide(val.ToHashFunctionArgument());
-			return FindSuccessorForId(objKey);
+			var res = FindSuccessorForId(objKey);
+			return res.Node;
 		}
 
 		// special method that checks if the seed node succ/pred are ok
@@ -231,22 +232,43 @@ namespace Koneko.P2P.Chord {
 			}
 		}
 
-		public NodeDescriptor FindSuccessorForId(ulong id) {
+		public FindNodeForIdResult FindSuccessorForId(FindNodeForIdArg id) {
+			Log.Write(LogEvent.Debug, "FindSuccessorForId(from: {0}, for {1})", LocalNode.Id, id);
+
 			// check if my successor is actually the successor of this id
 			if (TopologyHelper.IsInCircularInterval(id, LocalNode.Id, LocalNode.Successor.Id, includeRight: true)) {
-				return LocalNode.Successor;
+				Log.Write(LogEvent.Debug, 
+					"FindSuccessorForId(from: {1}, for {0}): TopologyHelper.IsInCircularInterval({0}, {1}, {2}, includeRight: true) is true, returning LocalNode.Successor: {2}", 
+					id, LocalNode.Id, LocalNode.Successor.Id
+				);
+				return new FindNodeForIdResult(LocalNode.Successor, false);
 			}
 
 			// check if me is actually the successor of this id
 			if (LocalNode.Predecessor != null && TopologyHelper.IsInCircularInterval(id, LocalNode.Predecessor.Id, LocalNode.Id, includeRight: true)) {
-				return LocalNode.Endpoint;
+				Log.Write(LogEvent.Debug, 
+					"FindSuccessorForId(from: {2}, for {0}): TopologyHelper.IsInCircularInterval({0}, {1}, {2}, includeRight: true) is true, returning LocalNode: {2}", 
+					id, LocalNode.Predecessor.Id, LocalNode.Id
+				);
+				return new FindNodeForIdResult(LocalNode.Endpoint, false);
 			}
 
 			var pred = FindPredecessorForId(id);
 
-			var predSrv = NodeServices.GetRemoteNodeService(pred);
+			var predSrv = NodeServices.GetRemoteNodeService(pred.Node);
 			try {
-				return predSrv.Service.GetNodeSuccessor();
+				var returnSuccessorAsResult = pred.ReturnSuccessorAsResult && id.ReturnSuccessorAsResult;
+				var res = returnSuccessorAsResult ? predSrv.Service.GetNodeSuccessor() : pred.Node;
+				Log.Write(LogEvent.Debug, 
+					returnSuccessorAsResult
+						? "FindSuccessorForId(from: {2}, for {3}): FindPredecessorForId returned node {0}, thus the result of FindSuccessorForId is {0}'s successor: {1}"
+						: "FindSuccessorForId(from: {2}, for {3}): FindPredecessorForId returned node {0}, thus the result of FindSuccessorForId is {0}", 
+					pred.Node.Id,
+ 					res.Id,
+					LocalNode.Id, 
+					id
+				);
+				return res;
 			} catch (Exception ex) {
 				if (predSrv.IsUnavailable) {
 					Log.Write(
@@ -258,7 +280,7 @@ namespace Koneko.P2P.Chord {
 					);
 
 					// TODO: correct?
-					return LocalNode.Endpoint;
+					return new FindNodeForIdResult(LocalNode.Endpoint, false);
 				} else {
 					throw;
 				}
@@ -285,21 +307,46 @@ namespace Koneko.P2P.Chord {
 			}
 		}
 
-		private NodeDescriptor FindPredecessorForId(ulong id) {
+		private FindNodeForIdResult FindPredecessorForId(FindNodeForIdArg id) {
 			var result = FindClosestPrecedingFinger(id);
+			Log.Write(LogEvent.Debug, 
+					"FindSuccessorForId(from: {1}, for {2}): FindClosestPrecedingFinger returned node {0} and ...", 
+					result.Id,
+					LocalNode.Id,
+					id
+				);
 			
 			// stop recursion
 			if (result.Equals(LocalNode.Endpoint)) {
-				return LocalNode.Endpoint;
+				Log.Write(LogEvent.Debug, 
+					"FindSuccessorForId(from: {0}, for {1}): ... actually it is the same as local node {0}, so return it", 
+					LocalNode.Id,
+					id
+				);
+				return new FindNodeForIdResult(LocalNode.Endpoint, false);
 			}
 
 			if (TopologyHelper.IsInCircularInterval(id, LocalNode.Id, LocalNode.Successor.Id, includeRight: true)) {
-				return result;
+				Log.Write(LogEvent.Debug, 
+					"FindSuccessorForId(from: {0}, for {1}): ... TopologyHelper.IsInCircularInterval({1}, {0}, {2}, includeRight: true) is true, so return it", 
+					LocalNode.Id,
+					id,
+					LocalNode.Successor.Id
+				);
+				return new FindNodeForIdResult(result, true);
 			} else {
 				var resultNodeSrv = NodeServices.GetRemoteNodeService(result);
 
 				try {
-					return resultNodeSrv.Service.FindSuccessorForId(id);
+					Log.Write(LogEvent.Debug, 
+						"FindSuccessorForId(from: {0}, for {1}): ... TopologyHelper.IsInCircularInterval({1}, {0}, {2}, includeRight: true) is false, so call FindSuccessorForId(from: {3}, for {1})", 
+						LocalNode.Id,
+						id,
+						LocalNode.Successor.Id,
+						result.Id
+					);
+					// if we call this recursively, we do not need to get the successor of the result inside
+					return resultNodeSrv.Service.FindSuccessorForId(new FindNodeForIdArg(id, false));
 				} catch (Exception ex) {
 					if (resultNodeSrv.IsUnavailable) {
 						Log.Write(
@@ -311,7 +358,7 @@ namespace Koneko.P2P.Chord {
 						);
 
 						// TODO: correct?
-						return LocalNode.Endpoint;
+						return new FindNodeForIdResult(LocalNode.Endpoint, false);
 					} else {
 						throw;
 					}
@@ -322,9 +369,26 @@ namespace Koneko.P2P.Chord {
 		private NodeDescriptor FindClosestPrecedingFinger(ulong id) {
 			for (int i = RingLength - 1; i >= 0; --i) {
 				if (TopologyHelper.IsInCircularInterval(LocalNode.Fingers[i].Value.Id, LocalNode.Id, id)) {
+					Log.Write(LogEvent.Debug, 
+						"FindSuccessorForId(from: {0}, for {1}): FindClosestPrecedingFinger: TopologyHelper.IsInCircularInterval({2}, {0}, {1}) is true, so return {2}", 
+						LocalNode.Id,
+						id,
+						LocalNode.Fingers[i].Value.Id
+					);
 					return LocalNode.Fingers[i].Value;
+				} else {
+					Log.Write(LogEvent.Debug, 
+						"FindSuccessorForId(from: {0}, for {1}): FindClosestPrecedingFinger: TopologyHelper.IsInCircularInterval({2}, {0}, {1}) is false, so continue", 
+						LocalNode.Id,
+						id,
+						LocalNode.Fingers[i].Value.Id
+					);
 				}
 			}
+			Log.Write(LogEvent.Debug, 
+				"FindSuccessorForId(from: {0}, for {1}): FindClosestPrecedingFinger: TopologyHelper.IsInCircularInterval(LocalNode.Fingers[i].Value.Id, {0}, {1}) is false for all fingers, so return local node {0}",				LocalNode.Id,
+				id
+			);
 			return LocalNode.Endpoint;
 		}
 
