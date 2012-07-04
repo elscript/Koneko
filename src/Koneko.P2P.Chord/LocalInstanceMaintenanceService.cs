@@ -39,7 +39,7 @@ namespace Koneko.P2P.Chord {
 
 			RunningTasks = new List<Task>();
 			LocalInstance = l;
-			TaskFactory = new TaskFactory(TaskCreationOptions.AttachedToParent | TaskCreationOptions.LongRunning, TaskContinuationOptions.None);
+			TaskFactory = new TaskFactory(TaskCreationOptions.LongRunning | TaskCreationOptions.AttachedToParent, TaskContinuationOptions.None);
 		}
 
 		public void Start() {
@@ -51,16 +51,44 @@ namespace Koneko.P2P.Chord {
 					() => {
 						var fingerRowIdxToFix = 0;
 						while (!Cancellation.IsCancellationRequested) {
+							Log.Write(LogEvent.Debug, "New stabilization cycle for node {0}", LocalNode);
+
 							var argsStab = new BackgroundTaskArgs { IdleTimeMs = StabilizeIdleTimeMs };
 							var argsStabSc = new BackgroundTaskArgs { IdleTimeMs = StabilizeSuccessorCacheIdleTimeMs };
 							var argsFf = new BackgroundTaskArgs { IdleTimeMs = FixFingersIdleTimeMs };
 
-							Stabilize(argsStab);
-							StabilizeSuccessorsCache(argsStabSc);
-							FixFingers(argsFf, fingerRowIdxToFix);
+							if (!Cancellation.IsCancellationRequested) {
+								Stabilize(argsStab);
+								Log.Write(LogEvent.Debug, "'Stabilize' for node {0} is finished", LocalNode);
+							} else {
+								break;
+							}
 
-							fingerRowIdxToFix = fingerRowIdxToFix == LocalInstance.RingLength - 1 ? 0 : fingerRowIdxToFix + 1;
-							Thread.Sleep(Math.Min(argsStab.IdleTimeMs, argsStabSc.IdleTimeMs));
+							if (!Cancellation.IsCancellationRequested) {
+								StabilizeSuccessorsCache(argsStabSc);
+								Log.Write(LogEvent.Debug, "'StabilizeSuccessorsCache' for node {0} is finished", LocalNode);
+							} else {
+								break;
+							}
+
+							if (!Cancellation.IsCancellationRequested) {
+								FixFingers(argsFf, fingerRowIdxToFix);
+								Log.Write(LogEvent.Debug, "'FixFingers' for node {0} is finished", LocalNode);
+							} else {
+								break;
+							}
+
+							if (!Cancellation.IsCancellationRequested) {
+								fingerRowIdxToFix = fingerRowIdxToFix == LocalInstance.RingLength - 1 ? 0 : fingerRowIdxToFix + 1;
+
+								var ttw = Math.Min(argsStab.IdleTimeMs, argsStabSc.IdleTimeMs);
+								Log.Write(LogEvent.Debug, "Stabilization cycle for node {0} is finished, waiting for {1} ms", LocalNode, ttw);
+								Thread.Sleep(ttw);
+							} else {
+								Log.Write(LogEvent.Debug, "Exiting from tabilization cycle for node {0}", LocalNode);
+								break;
+							}
+
 						}
 					},
 					Cancellation.Token
@@ -73,11 +101,10 @@ namespace Koneko.P2P.Chord {
 		public void Stop() {
 			if (Cancellation != null) {
 				Cancellation.Cancel();
-				foreach (Task t in RunningTasks) {
-					t.Wait();
-				}
+				Task.WaitAll(RunningTasks.ToArray());
 				RunningTasks.Clear();
 			}
+			Status = MaintenanceStatus.Stopped;
 		}
 
 		private void Stabilize(BackgroundTaskArgs args) {
@@ -100,6 +127,7 @@ namespace Koneko.P2P.Chord {
 					if (!SetSuccessorFromCache()) {
 						// either all nodes are failed or only local nodes are available - something wrong, we need to try rejoining
 						SetRejoinRequested();
+						return;
 					} else {
 						// repeat stabilize immediately
 						args.IdleTimeMs = 0;
@@ -141,6 +169,7 @@ namespace Koneko.P2P.Chord {
 					if (!SetSuccessorFromCache()) {
 						// either all nodes are failed or only local nodes are available - something wrong, we need to try rejoining
 						SetRejoinRequested();
+						return;
 					} else {
 						// repeat stabilize immediately
 						args.IdleTimeMs = 0;
@@ -175,6 +204,7 @@ namespace Koneko.P2P.Chord {
 					if (!SetSuccessorFromCache()) {
 						// either all nodes are failed or only local nodes are available - something wrong, we need to try rejoining
 						SetRejoinRequested();
+						return;
 					} else {
 						// repeat stabilize immediately
 						args.IdleTimeMs = 0;
@@ -201,6 +231,7 @@ namespace Koneko.P2P.Chord {
 					if (!SetSuccessorFromCache()) {
 						// either all nodes are failed or only local nodes are available - something wrong, we need to try rejoining
 						SetRejoinRequested();
+						return;
 					} else {
 						// repeat stabilize immediately
 						args.IdleTimeMs = 0;
@@ -283,10 +314,6 @@ namespace Koneko.P2P.Chord {
 		private void SetRejoinRequested() {
 			// cancel own threads
 			Cancellation.Cancel();
-
-			// set state
-			Status = MaintenanceStatus.Stopped;
-
 			LocalInstance.SignalEvent(LocalInstanceEvent.RejoinRequested);
 		}
 

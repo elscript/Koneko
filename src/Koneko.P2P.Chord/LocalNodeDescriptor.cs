@@ -2,10 +2,10 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Threading;
 
 namespace Koneko.P2P.Chord {
 	public class LocalNodeDescriptor {
-		public NodeDescriptor Predecessor { get; set; }
 		public IList<KeyValuePair<ulong, NodeDescriptor>> Fingers { get; set; }
 		public int SuccessorCacheSize { get; set; }
 		public NodeDescriptor Endpoint { get; set; }
@@ -39,15 +39,25 @@ namespace Koneko.P2P.Chord {
 			}
 		}
 
+		private NodeDescriptor _Predecessor;
+		public NodeDescriptor Predecessor { 
+			get { lock(PredecessorLockObject) { return _Predecessor; } }
+			set { lock(PredecessorLockObject) { _Predecessor = value; } }
+		}
+
 		public NodeDescriptor Successor {
 			get { 
-				if (Fingers.Any()) {
-					return Fingers[0].Value;
+				lock (SuccessorLockObject) {
+					if (Fingers.Any()) {
+						return Fingers[0].Value;
+					}
 				}
 				return null;
 			} 
 			set {
-				Fingers[0] = new KeyValuePair<ulong,NodeDescriptor>(TopologyHelper.GetFingerTableKey(Endpoint.Id, 0, RingLength), value);
+				lock (SuccessorLockObject) {
+					Fingers[0] = new KeyValuePair<ulong,NodeDescriptor>(TopologyHelper.GetFingerTableKey(Endpoint.Id, 0, RingLength), value);
+				}
 			}
 		}
 
